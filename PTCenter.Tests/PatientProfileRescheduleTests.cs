@@ -19,6 +19,7 @@ public sealed partial class BookingDatabaseTests
     private async Task<(BookingReceipt Receipt,int Plan)> ProfileBooking(bool insurance=false)
     {
         var plan=await PlanAsync(3,insurance);var request=Treatment(plan,3);request.StartsAt=Enumerable.Range(0,3).Select(i=>Upcoming.AddDays(i)).ToList();
+        (await db.TreatmentPlans.FindAsync(plan))!.FrequencyPerWeek=3;await db.SaveChangesAsync();
         request.PricingMode="Package";request.Deposit=insurance?60:100;request.PaymentMethod=PaymentMethod.Cash;
         return(await service.CreateAsync(request),plan);
     }
@@ -71,6 +72,10 @@ public sealed partial class BookingDatabaseTests
             var other=new Patient{ApplicationUserId="female",PaymentType="Cash"};db.Patients.Add(other);await db.SaveChangesAsync();
             db.Rooms.Add(new(){Id=2,Name="Other",Capacity=2});await db.SaveChangesAsync();
             db.Appointments.Add(new(){PatientId=conflict=="patient"?patientId:other.Id,DoctorId=conflict=="doctor"?"doctor":"senior",RoomId=conflict=="room"?1:2,StartTime=desired.UtcDateTime,EndTime=desired.UtcDateTime.AddHours(1),Status=AppointmentStatus.Pending,AppointmentType="Session"});
+        }
+        if(conflict=="doctor") {
+            var third=await OtherTreatment(3,desired);
+            db.Appointments.Add(new(){PatientId=third.PatientId,DoctorId="doctor",RoomId=3,StartTime=desired.UtcDateTime,EndTime=desired.UtcDateTime.AddHours(1),Status=AppointmentStatus.Pending,AppointmentType="Session"});
         }
         await db.SaveChangesAsync();
         Assert.DoesNotContain((await service.RescheduleAvailabilityAsync(id,CairoDate(desired.UtcDateTime))).Slots,s=>s.StartTime==slot.StartTime&&s.RoomId==1);

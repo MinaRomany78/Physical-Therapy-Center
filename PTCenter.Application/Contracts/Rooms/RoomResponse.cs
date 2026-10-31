@@ -15,4 +15,6 @@ public class RoomResponse
     public string? DoctorId { get; set; }
     public string? DoctorName { get; set; }
     public int CurrentLoad { get; set; }
+    public List<RoomOccupant> Occupants { get; set; } = [];
 }
+public record RoomOccupant(int AppointmentId, string PatientName, string? ClinicianName, string State);

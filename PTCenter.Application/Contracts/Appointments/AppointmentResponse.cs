@@ -10,6 +10,8 @@ namespace PTCenter.Application.Contracts.Appointments
         public int Id { get; set; }
         public DateTime? ActualCheckIn { get; set; }
         public DateTime? ActualCheckOut { get; set; }
+        public DateTime? TreatmentStartedAt { get; set; }
+        public DateTime? TreatmentEndedAt { get; set; }
         public bool AssessmentCompleted { get; set; }
         public int PatientId { get; set; }
         public string PatientName { get; set; } = default!;

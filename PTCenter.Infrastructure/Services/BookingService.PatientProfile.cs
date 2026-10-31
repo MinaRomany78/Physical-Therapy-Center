@@ -9,23 +9,13 @@ namespace PTCenter.Infrastructure.Services;
 public partial class BookingService
 {
     private static string ScheduleVersion(Appointment a) => Hash(new { a.Id,Start=a.StartTime.Ticks,End=a.EndTime.Ticks,a.RoomId,a.DoctorId,a.SeniorId,a.Status,CheckIn=a.ActualCheckIn?.Ticks,CheckOut=a.ActualCheckOut?.Ticks,Updated=a.UpdatedAt?.Ticks });
-    private static bool CanReschedule(Appointment a) => a.Status == AppointmentStatus.Pending && a.ActualCheckIn == null && a.ActualCheckOut == null && a.StartTime > DateTime.UtcNow &&
+    private static bool CanReschedule(Appointment a) => a.Status == AppointmentStatus.Pending && a.ActualCheckIn == null && a.ActualCheckOut == null && a.TreatmentStartedAt == null && a.TreatmentEndedAt == null && a.StartTime > DateTime.UtcNow &&
         (a.TreatmentPlanSession == null || a.TreatmentPlanSession.CheckIn == null && a.TreatmentPlanSession.CheckOut == null && a.TreatmentPlanSession.Status == SessionStatus.Pending);
     private static void RequireUpcoming(Appointment a) {
         if(!CanReschedule(a))throw Rule("NotUpcoming","Only upcoming, unstarted pending appointments can be rescheduled. Completed, cancelled, no-show and started records stay unchanged.",409);
     }
-    private static List<string> IntervalConflicts(DateTimeOffset start,int patientId,string clinicianId,int roomId,IEnumerable<Appointment> candidates)
-    {
-        var end=start.AddMinutes(60);var utc=start.UtcDateTime;var utcEnd=end.UtcDateTime;
-        var overlaps=candidates.Where(a=>a.Status is not(AppointmentStatus.Cancelled or AppointmentStatus.NoShow or AppointmentStatus.Completed) &&
-            (a.StartTime<utcEnd && a.EndTime>utc || a.Status==AppointmentStatus.InProgress && a.ActualCheckOut==null));
-        var conflicts=new List<string>();
-        if(overlaps.Any(a=>a.PatientId==patientId))conflicts.Add("PatientConflict");
-        // Preserve exclusive reservation/occupancy policy: rooms are hidden until checkout.
-        if(overlaps.Any(a=>a.RoomId==roomId))conflicts.Add("RoomConflict");
-        if(overlaps.Any(a=>a.DoctorId==clinicianId||a.SeniorId==clinicianId))conflicts.Add("ClinicianConflict");
-        return conflicts;
-    }
+    private static List<string> IntervalConflicts(DateTimeOffset start,int patientId,string clinicianId,int roomId,IEnumerable<Appointment> candidates,bool doctorTreatment=true,int roomCapacity=1)
+        => ClinicalCapacity.Conflicts(start.UtcDateTime,start.UtcDateTime.AddMinutes(60),patientId,clinicianId,roomId,candidates,doctorTreatment,roomCapacity);
     private static List<string> WorkingTimeConflicts(DateTimeOffset start,IEnumerable<DoctorSchedule> schedules,IEnumerable<DoctorAbsence> absences)
     {
         var local=TimeZoneInfo.ConvertTime(start,ClinicTimeZone);var end=TimeZoneInfo.ConvertTime(start.AddMinutes(60),ClinicTimeZone);var conflicts=new List<string>();
@@ -116,7 +106,7 @@ public partial class BookingService
             if(ClinicTimeZone.IsInvalidTime(local)||ClinicTimeZone.IsAmbiguousTime(local))continue;
             var start=new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local,ClinicTimeZone));
             if(WorkingTimeConflicts(start,hours,absences).Count>0)continue;
-            foreach(var room in rooms)if(IntervalConflicts(start,appointment.PatientId,clinician,room.Id,candidates).Count==0)slots.Add(new(start.UtcDateTime,start.UtcDateTime.AddMinutes(60),room.Id,room.Name,room.Capacity));
+            foreach(var room in rooms)if(IntervalConflicts(start,appointment.PatientId,clinician,room.Id,candidates,appointment.AppointmentType == "Session",room.Capacity).Count==0)slots.Add(new(start.UtcDateTime,start.UtcDateTime.AddMinutes(60),room.Id,room.Name,room.Capacity));
         }
         return new(id,ScheduleVersion(appointment),appointment.StartTime,appointment.EndTime,appointment.RoomId,clinician,doctor.Name,date,slots,notices);
     }
@@ -126,6 +116,7 @@ public partial class BookingService
         if(string.IsNullOrWhiteSpace(request.OperationKey)||request.OperationKey.Length>100||string.IsNullOrWhiteSpace(request.ExpectedVersion)||request.Reason?.Length>500)throw Rule("RescheduleRequest","A stable operation key, version and reason of at most 500 characters are required.");
         var fingerprint=Hash(new{id,request.ExpectedVersion,Start=request.StartTime.UtcDateTime,request.RoomId,Reason=request.Reason?.Trim(),Actor=actor});
         await using var transaction=await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        await ClinicMutationLock.AcquireAsync(db);
         var replay=await db.AppointmentScheduleChanges.AsNoTracking().SingleOrDefaultAsync(c=>c.OperationKey==request.OperationKey);
         if(replay!=null){if(replay.AppointmentId!=id||replay.RequestHash!=fingerprint)throw Rule("RetryKeyConflict","This operation key belongs to another reschedule request.",409);return Receipt(replay);}
         var appointment=await db.Appointments.Include(a=>a.TreatmentPlanSession).Include(a=>a.Room).SingleOrDefaultAsync(a=>a.Id==id)??throw Rule("AppointmentNotFound","Appointment was not found.",404);

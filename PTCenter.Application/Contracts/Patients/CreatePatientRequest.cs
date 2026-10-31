@@ -6,9 +6,10 @@ namespace PTCenter.Application.Contracts.Patients;
 
 public class CreatePatientRequest
 {
-    [Required]
-    [StringLength(50, MinimumLength = 3)]
-    public string UserName { get; set; } = string.Empty;
+    // Legacy clients may still send this value; registration never trusts or uses it.
+    public string? UserName { get; set; }
+    [EmailAddress, StringLength(256)]
+    public string? Email { get; set; }
 
     [Required]
     [StringLength(150, MinimumLength = 2)]

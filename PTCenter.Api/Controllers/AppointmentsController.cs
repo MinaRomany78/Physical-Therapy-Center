@@ -40,6 +40,7 @@ public class AppointmentsController(
     }
 
     [HttpPost]
+    [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.Operations)]
     public async Task<IActionResult> Create(
         [FromBody] CreateAppointmentRequest request)
     {
@@ -53,6 +54,7 @@ public class AppointmentsController(
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.Operations)]
     public async Task<IActionResult> Update(
         int id,
         [FromBody] UpdateAppointmentRequest request)
@@ -67,6 +69,7 @@ public class AppointmentsController(
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.Operations)]
     public async Task<IActionResult> Delete(int id)
     {
         var result = await _appointmentService.DeleteAsync(id);
@@ -79,6 +82,7 @@ public class AppointmentsController(
     }
 
     [HttpPatch("{id:int}/status")]
+    [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.Operations)]
     public async Task<IActionResult> UpdateStatus(
         int id,
         [FromBody] string status)

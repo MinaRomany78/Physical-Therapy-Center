@@ -75,7 +75,7 @@ public class ReceptionAccessTests
         "/api/Patients/GetAll?PageNumber=1&PageSize=100", "/api/Patients/GetById/1", "/api/Rooms", "/api/Rooms/1",
         "/api/InsuranceCompanies/GetAll", "/api/InsuranceCompanies/GetById/1", "/api/Appointments/GetAll?PageNumber=1&PageSize=100",
         "/api/Bookings/patients", "/api/Bookings/patients/1", "/api/Bookings/clinicians/workload", "/api/Bookings/patients/1/clinicians",
-        "/api/Bookings/accounts", "/api/Billing/invoices", "/api/Finance/insurance/accounts",
+        "/api/Bookings/accounts", "/api/Billing/invoices",
         "/api/Assessments/GetAll?patientId=1", "/api/Assessments/GetById/1", "/api/TreatmentPlans/GetAll?patientId=1",
         "/api/TreatmentPlans/GetById/1", "/api/TreatmentPlanSessions/GetAll?treatmentPlanId=1", "/api/InsuranceDocuments?patientId=2"
     };

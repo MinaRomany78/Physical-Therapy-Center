@@ -24,9 +24,8 @@ public class RoomService(ApplicationDbContext context) : IRoomService
         var reservations = await _context.Appointments.AsNoTracking()
             .Where(a => a.RoomId != null && (a.Status == AppointmentStatus.Pending || a.Status == AppointmentStatus.InProgress) &&
                 (a.Status == AppointmentStatus.InProgress && a.ActualCheckOut == null || a.StartTime < latest && a.EndTime > earliest))
-            .Select(a => new { a.RoomId, a.StartTime, a.EndTime, a.Status, a.ActualCheckOut }).ToListAsync();
-        var available = rooms.Where(room => !reservations.Any(a => a.RoomId == room.Id &&
-            (a.Status == AppointmentStatus.InProgress && a.ActualCheckOut == null || intervals.Any(slot => a.StartTime < slot.End && a.EndTime > slot.Start))));
+            .ToListAsync();
+        var available = rooms.Where(room => intervals.All(slot => ClinicalCapacity.Peak(slot.Start,slot.End,reservations.Where(a=>a.RoomId==room.Id)) < room.Capacity));
         return Result.Success(available.Select(room => new RoomResponse { Id = room.Id, Name = room.Name, Capacity = room.Capacity,
             IsActive = room.IsActive, Status = StatusRoom.Available, CurrentLoad = 0 }).ToList());
     }
@@ -82,6 +81,8 @@ public class RoomService(ApplicationDbContext context) : IRoomService
         int id,
         UpdateRoomRequest request)
     {
+        await using var transaction=await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        await ClinicMutationLock.AcquireAsync(_context);
         var room = await _context.Rooms
             .FirstOrDefaultAsync(x => x.Id == id);
 
@@ -94,11 +95,15 @@ public class RoomService(ApplicationDbContext context) : IRoomService
         if (request.Capacity <= 0)
             return Result.Failure<RoomResponse>(RoomErrors.InvalidCapacity);
 
+        var reservations=await _context.Appointments.AsNoTracking().Where(a=>a.RoomId==id && a.Status!=AppointmentStatus.Cancelled && a.Status!=AppointmentStatus.NoShow && a.Status!=AppointmentStatus.Completed && (a.EndTime>DateTime.UtcNow || a.ActualCheckIn!=null && a.ActualCheckOut==null)).ToListAsync();
+        if(reservations.Count>0 && (ClinicalCapacity.Peak(reservations.Min(a=>a.StartTime),reservations.Max(a=>a.EndTime),reservations)>request.Capacity || reservations.Count(a=>ClinicalCapacity.Occupied(a))>request.Capacity))
+            return Result.Failure<RoomResponse>(new("Room.CapacityReserved","Existing reservations or checked-in patients exceed this capacity. Review the appointments before reducing it.",409));
+
         if (!request.IsActive && room.IsActive)
         {
             var hasFutureAppointments = await _context.Appointments.AnyAsync(x =>
                 x.RoomId == id &&
-                x.StartTime > DateTime.UtcNow &&
+                (x.EndTime > DateTime.UtcNow || x.ActualCheckIn!=null && x.ActualCheckOut==null) &&
                 x.Status != AppointmentStatus.Cancelled &&
                 x.Status != AppointmentStatus.Completed &&
                 x.Status != AppointmentStatus.NoShow);
@@ -113,6 +118,7 @@ public class RoomService(ApplicationDbContext context) : IRoomService
         room.IsActive = request.IsActive;
 
         await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         return Result.Success(await MapRoomAsync(room));
     }
@@ -121,6 +127,8 @@ public class RoomService(ApplicationDbContext context) : IRoomService
         int id,
         bool maintenance)
     {
+        await using var transaction=await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        await ClinicMutationLock.AcquireAsync(_context);
         var room = await _context.Rooms
             .FirstOrDefaultAsync(x => x.Id == id);
 
@@ -131,7 +139,7 @@ public class RoomService(ApplicationDbContext context) : IRoomService
         {
             var hasFutureAppointments = await _context.Appointments.AnyAsync(x =>
                 x.RoomId == id &&
-                x.StartTime > DateTime.UtcNow &&
+                (x.EndTime > DateTime.UtcNow || x.ActualCheckIn!=null && x.ActualCheckOut==null) &&
                 x.Status != AppointmentStatus.Cancelled &&
                 x.Status != AppointmentStatus.Completed &&
                 x.Status != AppointmentStatus.NoShow);
@@ -143,6 +151,7 @@ public class RoomService(ApplicationDbContext context) : IRoomService
         room.IsActive = !maintenance;
 
         await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         return Result.Success();
     }
@@ -174,13 +183,14 @@ public class RoomService(ApplicationDbContext context) : IRoomService
         var currentAppointments = await _context.Appointments
             .AsNoTracking()
             .Where(x =>
-                x.RoomId == room.Id &&
-                (x.Status == AppointmentStatus.InProgress && x.ActualCheckOut == null ||
-                 x.Status == AppointmentStatus.Pending && x.StartTime <= now && x.EndTime > now))
+                x.RoomId == room.Id && x.ActualCheckIn != null && x.ActualCheckOut == null &&
+                x.Status != AppointmentStatus.Cancelled && x.Status != AppointmentStatus.NoShow)
             .Select(x => new
             {
                 x.DoctorId,
-                DoctorName = x.Doctor != null ? x.Doctor.FullName : null
+                DoctorName = x.Doctor != null ? x.Doctor.FullName : _context.Users.Where(u=>u.Id==x.SeniorId).Select(u=>u.FullName).FirstOrDefault(),
+                Occupant = new RoomOccupant(x.Id,x.Patient.ApplicationUser.FullName,x.Doctor != null ? x.Doctor.FullName : _context.Users.Where(u=>u.Id==x.SeniorId).Select(u=>u.FullName).FirstOrDefault(),
+                    x.TreatmentEndedAt != null ? "TreatmentFinished" : x.TreatmentStartedAt != null ? "Treating" : "Arrived")
             })
             .ToListAsync();
 
@@ -203,7 +213,8 @@ public class RoomService(ApplicationDbContext context) : IRoomService
             Status = status,
             CurrentLoad = currentLoad,
             DoctorId = doctor?.DoctorId,
-            DoctorName = doctor?.DoctorName
+            DoctorName = doctor?.DoctorName,
+            Occupants = currentAppointments.Select(x=>x.Occupant).ToList()
         };
     }
 }

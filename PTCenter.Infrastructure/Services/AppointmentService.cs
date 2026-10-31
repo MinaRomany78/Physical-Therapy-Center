@@ -72,7 +72,7 @@ public class AppointmentService(ApplicationDbContext context, BookingService boo
             .Select(x => new AppointmentResponse
             {
                 Id = x.Id,
-            ActualCheckIn = x.ActualCheckIn, ActualCheckOut = x.ActualCheckOut,
+            ActualCheckIn = x.ActualCheckIn, ActualCheckOut = x.ActualCheckOut, TreatmentStartedAt = x.TreatmentStartedAt, TreatmentEndedAt = x.TreatmentEndedAt,
                 PatientId = x.PatientId,
                 AssessmentCompleted = _context.Assessments.Any(a => a.AppointmentId == x.Id && a.CompletedAt != null),
                 PatientName = x.Patient.ApplicationUser.FullName,
@@ -135,6 +135,8 @@ public class AppointmentService(ApplicationDbContext context, BookingService boo
             return await GetByIdAsync(receipt.Appointments[0].Id);
         }
         catch (BookingRuleException e) { return Result.Failure<AppointmentResponse>(new(e.Code, e.Message, e.Status)); }
+        catch (Microsoft.Data.SqlClient.SqlException e) when(e.Number is 1205 or 1222 or 51001) { return Result.Failure<AppointmentResponse>(new("Booking.ConcurrentChange","Refresh clinic availability before retrying the original action.",409)); }
+        catch (DbUpdateConcurrencyException) { return Result.Failure<AppointmentResponse>(new("Booking.ConcurrentChange","The appointment changed. Refresh before saving.",409)); }
     }
 
     public async Task<Result<AppointmentResponse>> UpdateAsync(int id, UpdateAppointmentRequest request)
@@ -152,6 +154,8 @@ public class AppointmentService(ApplicationDbContext context, BookingService boo
             return await GetByIdAsync(id);
         }
         catch (BookingRuleException e) { return Result.Failure<AppointmentResponse>(new(e.Code, e.Message, e.Status)); }
+        catch (Microsoft.Data.SqlClient.SqlException e) when(e.Number is 1205 or 1222 or 51001) { return Result.Failure<AppointmentResponse>(new("Booking.ConcurrentChange","Refresh clinic availability before retrying the original action.",409)); }
+        catch (DbUpdateConcurrencyException) { return Result.Failure<AppointmentResponse>(new("Booking.ConcurrentChange","The appointment changed. Refresh before saving.",409)); }
     }
 
     public Task<Result> DeleteAsync(int id) => UpdateStatusAsync(id, nameof(AppointmentStatus.Cancelled));
@@ -227,7 +231,7 @@ public class AppointmentService(ApplicationDbContext context, BookingService boo
         return new AppointmentResponse
         {
             Id = x.Id,
-            ActualCheckIn = x.ActualCheckIn, ActualCheckOut = x.ActualCheckOut,
+            ActualCheckIn = x.ActualCheckIn, ActualCheckOut = x.ActualCheckOut, TreatmentStartedAt = x.TreatmentStartedAt, TreatmentEndedAt = x.TreatmentEndedAt,
             PatientId = x.PatientId,
             PatientName = x.Patient.ApplicationUser.FullName,
             DoctorId = x.DoctorId,

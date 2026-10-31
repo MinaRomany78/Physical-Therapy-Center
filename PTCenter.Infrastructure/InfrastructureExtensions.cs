@@ -41,6 +41,8 @@ public static class InfrastructureExtensions
             services.AddScoped<IAssessmentService, AssessmentService>();
             services.AddScoped<IAppointmentService, AppointmentService>();
             services.AddScoped<BookingService>();
+            services.AddScoped<DoctorWorkspaceService>();
+            services.AddScoped<ReassessmentService>();
             services.AddScoped<IReceptionistService, ReceptionistService>();
             services.AddScoped<IBillingService, BillingService>();
             services.AddScoped<IRoomService, RoomService>();

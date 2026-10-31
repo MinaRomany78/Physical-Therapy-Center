@@ -15,6 +15,7 @@ namespace PTCenter.Application.Contracts.TreatmentPlans
 
         public int NumberOfSessions { get; set; }
 
+        [System.ComponentModel.DataAnnotations.Range(1,7)]
         public int FrequencyPerWeek { get; set; }
 
         public string TreatmentType { get; set; } = null!;

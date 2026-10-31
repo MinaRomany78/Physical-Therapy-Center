@@ -12,7 +12,7 @@ builder.Services
     .AddInfrastructureExtensions(builder.Configuration);
 
 builder.Services
-    .AddControllers()
+    .AddControllers(options => options.Filters.Add<PTCenter.Api.Authorization.DoctorClinicalScopeFilter>())
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new PTCenter.Api.Converters.UtcDateTimeConverter());
@@ -21,6 +21,7 @@ builder.Services
         );
     });
 builder.Services.AddOpenApi();
+builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler, PTCenter.Api.Authorization.ClinicalAuthorizationResultHandler>();
 
 var app = builder.Build();
 

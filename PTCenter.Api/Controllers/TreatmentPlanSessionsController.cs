@@ -18,7 +18,7 @@ public class TreatmentPlanSessionsController(
         treatmentPlanSessionService;
 
     [HttpPost]
-    [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.ClinicalWrite)]
+    [Authorize(Roles = "Senior,Ceo,Admin,Owner")]
     [ProducesResponseType(
         typeof(TreatmentPlanSessionResponse),
         StatusCodes.Status200OK)]
@@ -67,7 +67,7 @@ public class TreatmentPlanSessionsController(
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.ClinicalWrite)]
+    [Authorize(Roles = "Senior,Ceo,Admin,Owner")]
     [ProducesResponseType(
         typeof(TreatmentPlanSessionResponse),
         StatusCodes.Status200OK)]
@@ -87,7 +87,7 @@ public class TreatmentPlanSessionsController(
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.ClinicalWrite)]
+    [Authorize(Roles = "Senior,Ceo,Admin,Owner")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(int id)

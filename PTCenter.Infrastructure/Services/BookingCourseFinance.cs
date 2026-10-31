@@ -43,8 +43,7 @@ public partial class BookingService
         var summary = (await new CourseFinanceService(db).SummaryAsync(agreement.TreatmentPlanId))!;
         var ids = appointments.Where(a => a.TreatmentPlanSessionId != null).Select(a => a.TreatmentPlanSessionId!.Value).ToList();
         var invoices = await db.Invoices.Where(i => i.CourseAgreementId == agreement.Id && i.TreatmentPlanSessionId != null && ids.Contains(i.TreatmentPlanSessionId.Value)).Select(i => i.Id).ToListAsync();
-        return new(batch.IdempotencyKey, batch.PatientId, "Committed", appointments.Select(a => new BookedAppointment(a.Id, a.TreatmentPlanSessionId,
-            new DateTimeOffset(DateTime.SpecifyKind(a.StartTime, DateTimeKind.Utc)), new DateTimeOffset(DateTime.SpecifyKind(a.EndTime, DateTimeKind.Utc)))).ToList(),
+        return new(batch.IdempotencyKey, batch.PatientId, "Committed", await CompleteRowsAsync(appointments),
             invoices, summary.TotalAmount, summary.PatientAmount, summary.InsuranceAmount, summary.PaidAmount, summary.RemainingAmount, null,
             JsonSerializer.Deserialize<List<InstallmentRequest>>(agreement.InstallmentsJson) ?? []);
     }

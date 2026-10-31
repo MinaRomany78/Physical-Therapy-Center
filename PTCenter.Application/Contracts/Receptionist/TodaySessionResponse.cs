@@ -16,6 +16,8 @@ namespace PTCenter.Application.Contracts.Receptionist
             public DateTime EndTime { get; set; }
             public DateTime? ActualCheckIn { get; set; }
             public DateTime? ActualCheckOut { get; set; }
+        public DateTime? TreatmentStartedAt { get; set; }
+        public DateTime? TreatmentEndedAt { get; set; }
             public string Time { get; set; } = default!;
             public string PatientName { get; set; } = default!;
             public string? SessionNumber { get; set; } // مثال: Session 5 of 10

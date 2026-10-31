@@ -32,6 +32,9 @@ public record BookingPlan(int Id, string DoctorId, string DoctorName, string Tre
     int PlannedSessions, int BookedSessions, int CompletedSessions, int RemainingSessions)
 {
     public CourseFinancialSummary? Financial { get; set; }
+    public bool StaffReviewRequired { get; set; }
+    public int? FrequencyPerWeek { get; set; }
+    public List<DateTime> BookedStartsAt { get; set; } = [];
 }
 public record BookingContext(int PatientId, string PatientName, string Gender, string? PaymentType,
     bool HasCompletedAssessment, bool IsInsurance, bool InsuranceApproved, int? RemainingApprovedSessions,
@@ -48,7 +51,17 @@ public record BookingPreview(List<BookingSlot> Appointments, List<string> Errors
     public decimal DiscountAmount { get; init; }
     public bool CanSave => Errors.Count == 0 && Appointments.Count > 0 && Appointments.All(x => x.Conflicts.Count == 0);
 }
-public record BookedAppointment(int Id, int? TreatmentPlanSessionId, DateTimeOffset StartTime, DateTimeOffset EndTime);
+public record BookedAppointment(int Id, int? TreatmentPlanSessionId, DateTimeOffset StartTime, DateTimeOffset EndTime)
+{
+    public string? ClinicianId { get; init; }
+    public string? ClinicianName { get; init; }
+    public int? RoomId { get; init; }
+    public string? RoomName { get; init; }
+    public int? TreatmentPlanId { get; init; }
+    public int? SessionNumber { get; init; }
+    public int? CourseAgreementId { get; init; }
+    public List<int> InvoiceIds { get; init; } = [];
+}
 public record BookingReceipt(string IdempotencyKey, int PatientId, string Outcome, List<BookedAppointment> Appointments,
     List<int> InvoiceIds, decimal TotalAmount, decimal PatientAmount, decimal InsuranceAmount, decimal PaidAmount,
     decimal RemainingAmount, string? WaiverReason, List<InstallmentRequest> Installments);

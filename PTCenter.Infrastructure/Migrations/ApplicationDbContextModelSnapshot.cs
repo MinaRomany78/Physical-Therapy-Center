@@ -448,8 +448,20 @@ namespace PTCenter.Infrastructure.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("TreatmentEndedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TreatmentEndedBy")
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<int?>("TreatmentPlanSessionId")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("TreatmentStartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TreatmentStartedBy")
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .IsConcurrencyToken()
@@ -460,7 +472,11 @@ namespace PTCenter.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("TreatmentEndedBy");
+
                     b.HasIndex("TreatmentPlanSessionId");
+
+                    b.HasIndex("TreatmentStartedBy");
 
                     b.HasIndex("BookingBatchId", "BookingSequence")
                         .IsUnique()
@@ -1297,6 +1313,121 @@ namespace PTCenter.Infrastructure.Migrations
                     b.ToTable("ReAssessments");
                 });
 
+            modelBuilder.Entity("PTCenter.Domain.Entities.ReassessmentRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("ActivePlanId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CancellationReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int?>("CompletedAssessmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CompletionHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Decision")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("OperationKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("PatientId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReasonCategory")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Recommendation")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int?>("RelatedAppointmentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RequestedBy")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ResolvedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("ReviewRequired")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("ReviewStartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReviewingSeniorId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int?>("RevisedPlanId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("TreatmentPlanId")
+                        .HasColumnType("int");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActivePlanId")
+                        .IsUnique()
+                        .HasFilter("[ActivePlanId] IS NOT NULL");
+
+                    b.HasIndex("CompletedAssessmentId");
+
+                    b.HasIndex("OperationKey")
+                        .IsUnique();
+
+                    b.HasIndex("PatientId");
+
+                    b.HasIndex("RelatedAppointmentId");
+
+                    b.HasIndex("RequestedBy");
+
+                    b.HasIndex("ReviewingSeniorId");
+
+                    b.HasIndex("RevisedPlanId");
+
+                    b.HasIndex("TreatmentPlanId");
+
+                    b.ToTable("ReassessmentRequests");
+                });
+
             modelBuilder.Entity("PTCenter.Domain.Entities.Room", b =>
                 {
                     b.Property<int>("Id")
@@ -1630,6 +1761,52 @@ namespace PTCenter.Infrastructure.Migrations
                     b.ToTable("TreatmentPlanSessions");
                 });
 
+            modelBuilder.Entity("PTCenter.Domain.Entities.TreatmentSessionRecord", b =>
+                {
+                    b.Property<int>("AppointmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AuthorId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ConditionChanges")
+                        .IsRequired()
+                        .HasMaxLength(10000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("FinalizedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ProgressNotes")
+                        .IsRequired()
+                        .HasMaxLength(10000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ResponseToTreatment")
+                        .IsRequired()
+                        .HasMaxLength(10000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("SavedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TreatmentPerformed")
+                        .IsRequired()
+                        .HasMaxLength(10000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("AppointmentId");
+
+                    b.HasIndex("AuthorId");
+
+                    b.ToTable("TreatmentSessionRecords");
+                });
+
             modelBuilder.Entity("Assessment", b =>
                 {
                     b.HasOne("PTCenter.Domain.Entities.Appointment", null)
@@ -1726,9 +1903,19 @@ namespace PTCenter.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("RoomId");
 
+                    b.HasOne("PTCenter.Domain.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("TreatmentEndedBy")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PTCenter.Domain.Entities.TreatmentPlanSession", "TreatmentPlanSession")
                         .WithMany()
                         .HasForeignKey("TreatmentPlanSessionId");
+
+                    b.HasOne("PTCenter.Domain.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("TreatmentStartedBy")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Doctor");
 
@@ -1926,6 +2113,47 @@ namespace PTCenter.Infrastructure.Migrations
                     b.Navigation("Invoice");
                 });
 
+            modelBuilder.Entity("PTCenter.Domain.Entities.ReassessmentRequest", b =>
+                {
+                    b.HasOne("Assessment", null)
+                        .WithMany()
+                        .HasForeignKey("CompletedAssessmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTCenter.Domain.Entities.Patient", null)
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTCenter.Domain.Entities.Appointment", null)
+                        .WithMany()
+                        .HasForeignKey("RelatedAppointmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTCenter.Domain.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("RequestedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTCenter.Domain.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewingSeniorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTCenter.Domain.Entities.TreatmentPlan", null)
+                        .WithMany()
+                        .HasForeignKey("RevisedPlanId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTCenter.Domain.Entities.TreatmentPlan", null)
+                        .WithMany()
+                        .HasForeignKey("TreatmentPlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("PTCenter.Domain.Entities.TreatmentCourseAgreement", b =>
                 {
                     b.HasOne("PTCenter.Domain.Entities.InsuranceCompany", null)
@@ -1974,6 +2202,21 @@ namespace PTCenter.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("TreatmentPlan");
+                });
+
+            modelBuilder.Entity("PTCenter.Domain.Entities.TreatmentSessionRecord", b =>
+                {
+                    b.HasOne("PTCenter.Domain.Entities.Appointment", null)
+                        .WithOne()
+                        .HasForeignKey("PTCenter.Domain.Entities.TreatmentSessionRecord", "AppointmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTCenter.Domain.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Assessment", b =>

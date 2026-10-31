@@ -35,10 +35,10 @@ public partial class CourseFinanceService(ApplicationDbContext db)
     private async Task<List<int>> ConsumedSessionIdsAsync(int planId)
     {
         var sessionIds = await db.TreatmentPlanSessions.Where(s => s.TreatmentPlanId == planId &&
-            (s.CheckIn != null || s.Status == SessionStatus.Completed || s.Status == SessionStatus.InProgress)).Select(s => s.Id).ToListAsync();
+            (s.Status == SessionStatus.Completed || s.Status == SessionStatus.InProgress)).Select(s => s.Id).ToListAsync();
         var appointmentIds = await db.Appointments.Where(a => a.TreatmentPlanSessionId != null &&
             db.TreatmentPlanSessions.Any(s => s.Id == a.TreatmentPlanSessionId && s.TreatmentPlanId == planId) &&
-            (a.ActualCheckIn != null || a.Status == AppointmentStatus.Completed || a.Status == AppointmentStatus.InProgress))
+            (a.TreatmentStartedAt != null || a.Status == AppointmentStatus.Completed))
             .Select(a => a.TreatmentPlanSessionId!.Value).ToListAsync();
         return sessionIds.Concat(appointmentIds).Distinct().ToList();
     }

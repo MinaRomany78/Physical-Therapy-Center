@@ -49,7 +49,7 @@ public sealed partial class BookingDatabaseTests
     {
         var request=Treatment(await PlanAsync(4),3);request.PricingMode="Package";request.UnitPrice=500;request.Deposit=1000;request.PaymentMethod=PaymentMethod.Visa;
         var receipt=await service.CreateAsync(request);var finance=new CourseFinanceService(db);
-        foreach(var appointment in receipt.Appointments.Take(2)) {await service.TransitionAsync(appointment.Id,AppointmentStatus.InProgress);await service.TransitionAsync(appointment.Id,AppointmentStatus.Completed);}
+        foreach(var appointment in receipt.Appointments.Take(2)) {await service.TransitionAsync(appointment.Id,AppointmentStatus.InProgress);await FinishClinicalForTest(appointment.Id);await service.TransitionAsync(appointment.Id,AppointmentStatus.Completed);}
         var third=receipt.Appointments[2].Id;var gate=await finance.GateAsync(third);
         Assert.False(gate.CanStart);Assert.Equal(500,gate.AdditionalPaymentRequired);Assert.Equal(1500,gate.RequiredCumulative);Assert.Equal(2,gate.ConsumedSessions);
         await Assert.ThrowsAsync<BookingRuleException>(()=>service.TransitionAsync(third,AppointmentStatus.InProgress));
@@ -87,7 +87,7 @@ public sealed partial class BookingDatabaseTests
         var accounts=await finance.InsuranceAccountsAsync();Assert.Equal(320,accounts.Companies.Single().Planned);Assert.Equal(0,accounts.Companies.Single().Earned);
         var claimRequest=new SubmitInsuranceClaimRequest(Guid.NewGuid().ToString(),invoice," claim-001 ");
         await Assert.ThrowsAsync<BookingRuleException>(()=>finance.SubmitClaimAsync(claimRequest,"ceo"));
-        await service.TransitionAsync(id,AppointmentStatus.InProgress);await service.TransitionAsync(id,AppointmentStatus.Completed);
+        await service.TransitionAsync(id,AppointmentStatus.InProgress);await FinishClinicalForTest(id);await service.TransitionAsync(id,AppointmentStatus.Completed);
         var claim=await finance.SubmitClaimAsync(claimRequest,"ceo");Assert.Equal("claim-001",claim.SubmissionReference);Assert.Equal(claim.Id,(await finance.SubmitClaimAsync(claimRequest,"ceo")).Id);
         var settle=new SettleInsuranceClaimRequest(Guid.NewGuid().ToString(),30,PaymentMethod.Online,"settlement-001");
         await finance.SettleClaimAsync(claim.Id,settle);await finance.SettleClaimAsync(claim.Id,settle);

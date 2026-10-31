@@ -26,7 +26,7 @@ public class ReceptionLookupsController(ApplicationDbContext db) : ControllerBas
         var ids = memberships.Select(u => u.Id).Distinct().ToList();
         var hours = await db.DoctorSchedules.AsNoTracking().Where(h => ids.Contains(h.DoctorId)).ToListAsync();
         var absences = await db.DoctorAbsences.AsNoTracking().Where(a => ids.Contains(a.DoctorId)).ToListAsync();
-        var active = await db.Appointments.AsNoTracking().Where(a => a.Status == AppointmentStatus.InProgress && a.ActualCheckIn != null && a.ActualCheckOut == null)
+        var active = await db.Appointments.AsNoTracking().Where(a => a.Status == AppointmentStatus.InProgress && (a.DoctorId != null && a.TreatmentStartedAt != null && a.TreatmentEndedAt == null || a.SeniorId != null && a.ActualCheckIn != null && a.ActualCheckOut == null))
             .Select(a => new { a.DoctorId, a.SeniorId }).ToListAsync();
         return memberships.GroupBy(u => u.Id).Select(group => new ReceptionClinicianOption(group.Key, group.First().FullName,
             group.First().Gender.ToString(), group.Select(u => u.Role).Distinct().Order().ToList(),

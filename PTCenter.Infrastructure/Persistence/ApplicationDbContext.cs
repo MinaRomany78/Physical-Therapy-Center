@@ -33,6 +33,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<InsuranceClaim> InsuranceClaims { get; set; }
 
     public DbSet<SessionNote> SessionNotes { get; set; }
+    public DbSet<TreatmentSessionRecord> TreatmentSessionRecords { get; set; }
+    public DbSet<ReassessmentRequest> ReassessmentRequests { get; set; }
 
     public DbSet<ReAssessment> ReAssessments { get; set; }
 

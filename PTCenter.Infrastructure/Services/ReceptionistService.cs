@@ -102,7 +102,7 @@ public class ReceptionistService(ApplicationDbContext context, BookingService bo
                 Id = x.Id,
                 PatientId = x.PatientId, DoctorId = x.DoctorId, SeniorId = x.SeniorId, RoomId = x.RoomId,
                 AppointmentType = x.AppointmentType, StartTime = x.StartTime, EndTime = x.EndTime,
-                ActualCheckIn = x.ActualCheckIn, ActualCheckOut = x.ActualCheckOut,
+                ActualCheckIn = x.ActualCheckIn, ActualCheckOut = x.ActualCheckOut, TreatmentStartedAt = x.TreatmentStartedAt, TreatmentEndedAt = x.TreatmentEndedAt,
                 Time = x.StartTime.ToString("hh:mm tt"),
                 PatientName = x.Patient.ApplicationUser.FullName,
                 SessionNumber = x.TreatmentPlanSession != null ? $"Session {x.TreatmentPlanSession.SessionNumber}" : null,
@@ -130,7 +130,7 @@ public class ReceptionistService(ApplicationDbContext context, BookingService bo
     {
         try { await bookings.TransitionAsync(appointmentId, newStatus); return Result.Success(); }
         catch (BookingRuleException e) { return Result.Failure(new(e.Code, e.Message, e.Status)); }
-        catch (Microsoft.Data.SqlClient.SqlException e) when (e.Number is 1205 or 1222) { return Result.Failure(new("Booking.ConcurrentChange", "The session changed concurrently. Refresh before starting again.", 409)); }
+        catch (Microsoft.Data.SqlClient.SqlException e) when (e.Number is 1205 or 1222 or 51001) { return Result.Failure(new("Booking.ConcurrentChange", "The session changed concurrently. Refresh before starting again.", 409)); }
     }
 
     public Task<Result> CancelAppointmentAsAbsentAsync(int appointmentId) => UpdateAppointmentStatusAsync(appointmentId, AppointmentStatus.Cancelled);

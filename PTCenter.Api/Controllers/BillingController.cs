@@ -27,15 +27,19 @@ public class BillingController(IBillingService billing) : ControllerBase
     [HttpGet("invoices/{id:int}")]
     public Task<IActionResult> GetInvoiceById(int id) => Execute(()=>billing.GetInvoiceByIdAsync(id));
     [HttpPost("invoices")]
+    [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.Operations)]
     public Task<IActionResult> CreateInvoice(CreateInvoiceRequest request) => Execute(()=>billing.CreateInvoiceAsync(request));
     [HttpPatch("invoices/{id:int}/status")]
+    [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.Operations)]
     public Task<IActionResult> UpdateInvoiceStatus(int id,UpdateInvoiceStatusRequest request) => Execute(()=>billing.UpdateInvoiceStatusAsync(id,request));
     [HttpDelete("invoices/{id:int}")]
+    [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.Operations)]
     public Task<IActionResult> DeleteInvoice(int id) => Execute(async()=>{
         var result=await billing.DeleteInvoiceAsync(id);
         return result.IsFailure ? Result.Failure<object>(result.Error) : Result.Success<object>(new{message="Invoice deleted successfully."});
     });
     [HttpPost("payments")]
+    [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.Operations)]
     public Task<IActionResult> AddPayment(CreatePaymentRequest request) => Execute(()=>billing.AddPaymentAsync(request));
     [HttpGet("invoices/{invoiceId:int}/payments")]
     public Task<IActionResult> GetPaymentsByInvoiceId(int invoiceId) => Execute(()=>billing.GetPaymentsByInvoiceIdAsync(invoiceId));

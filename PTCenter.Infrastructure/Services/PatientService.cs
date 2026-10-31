@@ -28,17 +28,16 @@ public class PatientService(
     public async Task<Result<PatientResponse>> AddAsync(
         CreatePatientRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.UserName))
-            return Result.Failure<PatientResponse>(
-                PatientErrors.RegistrationFailed);
-
-        var userName = request.UserName.Trim();
-
-        var existingUser = await _userManager.FindByNameAsync(userName);
-
-        if (existingUser is not null)
-            return Result.Failure<PatientResponse>(
-                PatientErrors.PatientAlreadyExists);
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var result = await AddAttemptAsync(request, "patient." + Guid.NewGuid().ToString("N"));
+            if(result.IsSuccess || result.Error != PatientErrors.PatientAlreadyExists) return result;
+            _context.ChangeTracker.Clear();
+        }
+        return Result.Failure<PatientResponse>(PatientErrors.RegistrationFailed);
+    }
+    private async Task<Result<PatientResponse>> AddAttemptAsync(CreatePatientRequest request, string userName)
+    {
 
         if (request.InsuranceCompanyId.HasValue)
         {
@@ -50,16 +49,6 @@ public class PatientService(
                     PatientErrors.InsuranceCompanyNotFound);
         }
 
-        // CreatePatientRequest does not contain an email in this version,
-        // so the service generates a placeholder email.
-        var generatedEmail = $"{userName}@example.com";
-
-        var existingEmail = await _userManager.FindByEmailAsync(generatedEmail);
-
-        if (existingEmail is not null)
-            return Result.Failure<PatientResponse>(
-                PatientErrors.PatientAlreadyExists);
-
         await using var transaction =
             await _context.Database.BeginTransactionAsync();
 
@@ -70,13 +59,13 @@ public class PatientService(
             user = new ApplicationUser
             {
                 UserName = userName,
-                Email = generatedEmail,
+                Email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim(),
                 PhoneNumber = request.PhoneNumber?.Trim(),
                 FullName = request.FullName.Trim(),
                 Gender = request.Gender,
                 BirthDate = request.BirthDate,
 
-                EmailConfirmed = true
+                EmailConfirmed = false
             };
 
             var password = GeneratePassword();
@@ -92,7 +81,7 @@ public class PatientService(
                 await transaction.RollbackAsync();
 
                 return Result.Failure<PatientResponse>(
-                    PatientErrors.RegistrationFailed);
+                    createResult.Errors.Any(e=>e.Code=="DuplicateUserName") ? PatientErrors.PatientAlreadyExists : PatientErrors.RegistrationFailed);
             }
 
             // Assign the Patient role.
@@ -143,6 +132,11 @@ public class PatientService(
             }
 
             return Result.Success(response);
+        }
+        catch (DbUpdateException ex) when(ex.GetBaseException().Message.Contains("UserNameIndex",StringComparison.OrdinalIgnoreCase) || ex.GetBaseException().Message.Contains("AspNetUsers.NormalizedUserName",StringComparison.OrdinalIgnoreCase))
+        {
+            await transaction.RollbackAsync();
+            return Result.Failure<PatientResponse>(PatientErrors.PatientAlreadyExists);
         }
         catch (Exception ex)
         {
@@ -202,7 +196,7 @@ public class PatientService(
             totalCount / (double)request.PageSize);
 
         var patients = await query
-            .OrderByDescending(x => x.CreatedAt)
+            .OrderBy(x => x.ApplicationUser.FullName).ThenBy(x => x.Id)
             .Skip((request.PageNumber - 1) * request.PageSize)
             .Take(request.PageSize)
             .ToListAsync();

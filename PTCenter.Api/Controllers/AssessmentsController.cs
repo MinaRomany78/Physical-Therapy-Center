@@ -17,7 +17,7 @@ public class AssessmentsController(
         assessmentService;
 
     [HttpPost]
-    [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.ClinicalWrite)]
+    [Authorize(Roles = "Senior,Ceo,Admin,Owner")]
     [ProducesResponseType(
         typeof(AssessmentResponse),
         StatusCodes.Status200OK)]
@@ -65,7 +65,7 @@ public class AssessmentsController(
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.ClinicalWrite)]
+    [Authorize(Roles = "Senior,Ceo,Admin,Owner")]
     [ProducesResponseType(
         typeof(AssessmentResponse),
         StatusCodes.Status200OK)]
@@ -84,7 +84,7 @@ public class AssessmentsController(
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.ClinicalWrite)]
+    [Authorize(Roles = "Senior,Ceo,Admin,Owner")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(int id)

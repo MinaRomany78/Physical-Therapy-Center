@@ -19,6 +19,10 @@ public class Appointment : BaseEntity
     public bool InsuranceFunded { get; set; }
     public DateTime? ActualCheckIn { get; set; }
     public DateTime? ActualCheckOut { get; set; }
+    public DateTime? TreatmentStartedAt { get; set; }
+    public DateTime? TreatmentEndedAt { get; set; }
+    public string? TreatmentStartedBy { get; set; }
+    public string? TreatmentEndedBy { get; set; }
 
     // أضف هذه الـ Navigation Properties لكي يعمل الـ Include في الـ Service بنجاح:
     public virtual Patient Patient { get; set; } = null!;

@@ -33,13 +33,13 @@ public partial class CourseFinanceService
         {
             var invoices = await db.Invoices.AsNoTracking().Include(i => i.Appointment).Include(i => i.Payments)
                 .Where(i => i.Appointment != null && i.Appointment.BookingBatchId == batch.Id).ToListAsync();
-            var required = invoices.Where(i => i.Id == invoice.Id || i.Appointment!.ActualCheckIn != null || i.Appointment.Status == AppointmentStatus.Completed).Sum(i => i.PatientAmount);
+            var required = invoices.Where(i => i.Id == invoice.Id || i.Appointment!.TreatmentStartedAt != null || i.Appointment.Status == AppointmentStatus.Completed).Sum(i => i.PatientAmount);
             var paid = invoices.SelectMany(i => i.Payments).Where(PatientReceipt).Sum(p => p.Amount);
-            return new(appointmentId, paid >= required, batch.IdempotencyKey, invoice.Id, "Package", paid, required, Math.Max(0, required - paid), Math.Max(0, batch.PatientAmount - paid), invoices.Count(i => i.Appointment!.ActualCheckIn != null));
+            return new(appointmentId, paid >= required, batch.IdempotencyKey, invoice.Id, "Package", paid, required, Math.Max(0, required - paid), Math.Max(0, batch.PatientAmount - paid), invoices.Count(i => i.Appointment!.TreatmentStartedAt != null));
         }
         var received = invoice.Payments.Where(PatientReceipt).Sum(p => p.Amount);
         return new(appointmentId, received >= invoice.PatientAmount, batch?.IdempotencyKey ?? $"invoice:{invoice.Id}", invoice.Id, "PerSession", received,
-            invoice.PatientAmount, Math.Max(0, invoice.PatientAmount - received), Math.Max(0, invoice.PatientAmount - received), appointment.ActualCheckIn != null ? 1 : 0);
+            invoice.PatientAmount, Math.Max(0, invoice.PatientAmount - received), Math.Max(0, invoice.PatientAmount - received), appointment.TreatmentStartedAt != null ? 1 : 0);
     }
 
     public async Task<PaymentGate> CollectForAppointmentAsync(int appointmentId, CollectBookingPaymentRequest request)

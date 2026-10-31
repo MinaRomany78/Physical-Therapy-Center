@@ -8,6 +8,16 @@ namespace PTCenter.Tests;
 
 public class BookingMigrationTests
 {
+    [Fact] public void Doctor_migration_is_additive_and_does_not_infer_history_or_touch_financial_records()
+    {
+        using var db=new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlServer("Server=(localdb)\\MSSQLLocalDB;Database=DoctorDesignOnly;Trusted_Connection=True").Options);
+        Assert.False(db.Database.HasPendingModelChanges());
+        var sql=db.GetService<IMigrator>().GenerateScript("20261031122754_AppointmentScheduleAudit","20261031164400_DoctorClinicalWorkspace",MigrationsSqlGenerationOptions.Idempotent);
+        Assert.Contains("CREATE TABLE [TreatmentSessionRecords]",sql);Assert.Contains("CREATE TABLE [ReassessmentRequests]",sql);
+        Assert.Contains("[TreatmentStartedAt] datetime2 NULL",sql);Assert.Contains("[TreatmentEndedAt] datetime2 NULL",sql);
+        Assert.Contains("CREATE UNIQUE INDEX [IX_ReassessmentRequests_ActivePlanId]",sql);
+        foreach(var forbidden in new[]{"DROP TABLE","DROP COLUMN","ALTER COLUMN","UPDATE [","DELETE FROM","TRUNCATE","ON DELETE CASCADE","INSERT INTO [Invoices]","INSERT INTO [Payments]"})Assert.DoesNotContain(forbidden,sql);
+    }
     [Fact] public void SqlServer_migration_matches_the_current_model_and_generates_without_a_database_connection()
     {
         using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()

@@ -150,6 +150,9 @@ public class TreatmentPlanSessionService(
                 TreatmentPlanSessionErrors.SessionNotFound);
         }
 
+        if (session.Status == SessionStatus.Completed && request.Notes != session.Notes)
+            return Result.Failure<TreatmentPlanSessionResponse>(new("Doctor.Finalized", "Finalized treatment notes are read-only; no correction history is implemented.", 409));
+
         var treatmentPlan = await _context.TreatmentPlans
             .FirstOrDefaultAsync(x => x.Id == session.TreatmentPlanId);
 
