@@ -323,6 +323,11 @@ namespace PTCenter.Infrastructure.Migrations
                     b.Property<int>("Gender")
                         .HasColumnType("int");
 
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("bit");
 
@@ -349,6 +354,13 @@ namespace PTCenter.Infrastructure.Migrations
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTime?>("StatusChangedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("StatusChangedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<bool>("TwoFactorEnabled")
                         .HasColumnType("bit");
 
@@ -357,6 +369,8 @@ namespace PTCenter.Infrastructure.Migrations
                         .HasColumnType("nvarchar(256)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("IsActive");
 
                     b.HasIndex("NormalizedEmail")
                         .HasDatabaseName("EmailIndex");
@@ -378,6 +392,7 @@ namespace PTCenter.Infrastructure.Migrations
                             EmailConfirmed = true,
                             FullName = "SuperAdmin",
                             Gender = 0,
+                            IsActive = true,
                             LockoutEnabled = false,
                             NormalizedUserName = "SUPERADMIN",
                             PasswordHash = "AQAAAAIAAYagAAAAEBR+Y7x+hwxcWdCxy1/N9XLtsTZzDGyQIzCdCL+TqELwC1bCOWfdAocAfC5X2xNOZA==",
@@ -492,6 +507,8 @@ namespace PTCenter.Infrastructure.Migrations
                     b.HasIndex("RoomId", "StartTime");
 
                     b.HasIndex("SeniorId", "StartTime");
+
+                    b.HasIndex("StartTime", "Status");
 
                     b.ToTable("Appointments");
                 });
@@ -717,6 +734,44 @@ namespace PTCenter.Infrastructure.Migrations
                     b.HasIndex("PatientId");
 
                     b.ToTable("BookingBatches");
+                });
+
+            modelBuilder.Entity("PTCenter.Domain.Entities.ClinicSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ClinicSettings");
                 });
 
             modelBuilder.Entity("PTCenter.Domain.Entities.DoctorAbsence", b =>
@@ -1505,6 +1560,10 @@ namespace PTCenter.Infrastructure.Migrations
                     b.HasIndex("InsuranceChequeReceiptId", "InsuranceClaimId")
                         .IsUnique()
                         .HasFilter("[InsuranceChequeReceiptId] IS NOT NULL");
+
+                    b.HasIndex("Status", "PaymentDate");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("Status", "PaymentDate"), new[] { "Amount", "InvoiceId", "PayerType", "PaymentMethod" });
 
                     b.ToTable("Payments");
                 });

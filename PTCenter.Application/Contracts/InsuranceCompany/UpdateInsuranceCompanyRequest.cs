@@ -7,6 +7,7 @@ namespace PTCenter.Application.Contracts.InsuranceCompany
 {
     public class UpdateInsuranceCompanyRequest
     {
+        public string? Version { get; set; }
 
         [Required]
         [MaxLength(200)]

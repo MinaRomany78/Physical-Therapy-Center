@@ -23,7 +23,7 @@ public class StaffWorkingHoursHttpTests
         var client = host.CreateClient(new() { BaseAddress = new("https://localhost") });
         using var scope = host.Services.CreateScope();
         await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.EnsureCreatedAsync();
-        client.DefaultRequestHeaders.Authorization = new("Bearer", BookingTestHost.Token("Ceo"));
+        client.DefaultRequestHeaders.Authorization = new("Bearer", await host.TokenAsync("Ceo"));
         return client;
     }
 
@@ -93,7 +93,7 @@ public class StaffWorkingHoursHttpTests
     [Fact] public async Task Receptionist_cannot_manage_users_and_booking_has_no_working_hours_actions()
     {
         using var host = new BookingTestHost(); using var client = await Client(host);
-        client.DefaultRequestHeaders.Authorization = new("Bearer", BookingTestHost.Token("Receptionist"));
+        client.DefaultRequestHeaders.Authorization = new("Bearer", await host.TokenAsync("Receptionist"));
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/Users/Add", Staff())).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsJsonAsync("/api/Bookings/clinicians/senior/working-hours", new { })).StatusCode);
     }

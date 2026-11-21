@@ -1,4 +1,4 @@
-﻿using Mapster;
+using Mapster;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -109,6 +109,11 @@ public class UserService(
 
     public async Task<Result<UserResponse>> AddAsync(CreateUserRequest request)
     {
+        request.UserName = request.UserName?.Trim() ?? ""; request.FullName = request.FullName?.Trim() ?? "";
+        if (request.BirthDate == DateTime.MinValue || request.BirthDate.Date > TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ClinicCalendar.Zone).Date)
+            return Result.Failure<UserResponse>(new Error("Staff.InvalidBirthDate", "Enter a valid birth date that is not in the future.", 400));
+        if (request.UserName.Length == 0 || request.FullName.Length == 0 || request.Roles == null || request.Roles.Count == 0)
+            return Result.Failure<UserResponse>(new Error("Staff.Required", "Name, username and role are required.", 400));
         if (!ValidWorkingHours(request.WorkingHours, request.Roles)) return Result.Failure<UserResponse>(UserErrors.InvalidWorkingHours);
         // Check duplicate username
         if (await _context.Users.AnyAsync(x => x.UserName == request.UserName))
@@ -185,12 +190,19 @@ public class UserService(
     }
     public async Task<Result<UserResponse>> UpdateAsync(string userId, UpdateUserRequest request)
     {
+        request.UserName = request.UserName?.Trim() ?? ""; request.FullName = request.FullName?.Trim() ?? "";
+        if (request.BirthDate == DateTime.MinValue || request.BirthDate.Date > TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ClinicCalendar.Zone).Date)
+            return Result.Failure<UserResponse>(new Error("Staff.InvalidBirthDate", "Enter a valid birth date that is not in the future.", 400));
+        if (request.UserName.Length == 0 || request.FullName.Length == 0 || request.Roles == null || request.Roles.Count == 0)
+            return Result.Failure<UserResponse>(new Error("Staff.Required", "Name, username and role are required.", 400));
         if (!ValidWorkingHours(request.WorkingHours, request.Roles)) return Result.Failure<UserResponse>(UserErrors.InvalidWorkingHours);
         // Find user
         if (await _userManager.FindByIdAsync(userId) is not { } user)
         { return Result.Failure<UserResponse>(UserErrors.UserNotFound); }
         // Check duplicate username
         var duplicateUserName = await _context.Users.AnyAsync(x => x.UserName == request.UserName && x.Id != userId);
+        if (request.Version != null && request.Version != user.ConcurrencyStamp)
+            return Result.Failure<UserResponse>(new Error("Ceo.StaffConflict", "Staff details changed. Reload before saving.", 409));
         if (duplicateUserName) { return Result.Failure<UserResponse>(UserErrors.DuplicatedUserName); }
         // Validate roles
         var allowedRoles = await _roleManager.Roles.Select(role => role.Name).Where(role => role != null)
@@ -199,6 +211,9 @@ public class UserService(
         { return Result.Failure<UserResponse>(UserErrors.InvalidRoles); }
         await using var transaction = await _context.Database.BeginTransactionAsync();
         // Update user properties
+        await ClinicMutationLock.AcquireAsync(_context);
+        try { await StaffSafety.AssertFutureWorkAsync(_context, userId, DateTime.UtcNow, request.Roles, request.WorkingHours); }
+        catch (BookingRuleException e) { return Result.Failure<UserResponse>(new Error(e.Code, e.Message, e.Status)); }
         user.UserName = request.UserName;
         user.FullName = request.FullName;
         user.Gender = request.Gender;
@@ -235,13 +250,8 @@ public class UserService(
     {
         if (await _userManager.FindByIdAsync(userId) is not { } user)
         { return Result.Failure(UserErrors.UserNotFound); }
-        var result = await _userManager.DeleteAsync(user);
-        if (!result.Succeeded)
-        {
-            var error = result.Errors.First();
-            return Result.Failure(new Error(error.Code, error.Description, StatusCodes.Status400BadRequest));
-        }
-        return Result.Success();
+        // Legacy clients must use the explicit, reviewed deactivation endpoint. Never delete Identity authors.
+        return Result.Failure(new Error("Staff.DeactivationRequired", "Staff identities are retained. Use the staff deactivation action after reviewing future appointments.", 409));
     }
 }
 

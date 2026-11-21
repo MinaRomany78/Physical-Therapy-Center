@@ -21,7 +21,7 @@ public class BillingQuery
     [Range(1, int.MaxValue)] public int? PlanId { get; set; }
     [MaxLength(450)] public string? ClinicianId { get; set; }
     [EnumDataType(typeof(PaymentMethod))] public PaymentMethod? Method { get; set; }
-    [RegularExpression("^(Unsubmitted|Submitted|Partial|Settled)$")] public string? ClaimStatus { get; set; }
+    [RegularExpression("^(Unsubmitted|Submitted|Partial|Settled|Outstanding)$")] public string? ClaimStatus { get; set; }
     [Range(1, int.MaxValue)] public int Page { get; set; } = 1;
     [Range(1, 100)] public int PageSize { get; set; } = 20;
 }

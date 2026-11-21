@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using PTCenter.Application.Interfaces;
 using PTCenter.Application.Services;
@@ -74,11 +75,6 @@ public static class InfrastructureExtensions
                 .ValidateDataAnnotations()
                 .ValidateOnStart();
 
-            var jwtSettings = configuration
-                .GetRequiredSection(JwtOptions.SectionName)
-                .Get<JwtOptions>()!;
-
-
             services.AddAuthentication(options =>
                 {
                     // For [Authorize] know That We Use Bearer
@@ -87,7 +83,21 @@ public static class InfrastructureExtensions
                 })
                 .AddJwtBearer(o =>
                 {
+                    o.Events = new JwtBearerEvents { OnTokenValidated = async validation => {
+                        var db = validation.HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
+                        var id = validation.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+                        var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == id);
+                        if (user == null || !user.IsActive) { validation.Fail("Account is inactive."); return; }
+                        var current = await (from ur in db.UserRoles join r in db.Roles on ur.RoleId equals r.Id where ur.UserId == id select r.Name!).ToListAsync();
+                        var issued = validation.Principal!.FindAll(ClaimTypes.Role).Select(c => c.Value).ToHashSet();
+                        if (!issued.SetEquals(current)) validation.Fail("Roles changed. Sign in again.");
+                    }};
                     o.SaveToken = true;
+                });
+            // Resolve final configuration at options creation, including user secrets, environment and test-host overrides.
+            services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme).Configure<IOptions<JwtOptions>>((o, settings) =>
+                {
+                    var jwtSettings = settings.Value;
                     o.TokenValidationParameters = new TokenValidationParameters
                     {
                         ValidateIssuerSigningKey = true,

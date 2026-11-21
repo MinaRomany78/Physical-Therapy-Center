@@ -14,8 +14,8 @@ public partial class CourseFinanceService(ApplicationDbContext db)
 {
     private static BookingRuleException Rule(string code, string message, int status = 400) => new("Booking." + code, message, status);
     public static bool Money(decimal value) => value >= 0 && value <= 999999999 && decimal.Round(value, 2) == value;
-    public static bool InsurerReceipt(Payment payment) => payment.Status == PaymentStatus.Paid &&
-        (payment.PaymentMethod == PaymentMethod.Insurance || payment.PayerType is "Insurer" or "Insurance");
+    private static readonly Func<Payment, bool> IsInsurerPaid = CeoReadService.InsurerPaid.Compile();
+    public static bool InsurerReceipt(Payment payment) => IsInsurerPaid(payment);
     public static bool PatientReceipt(Payment payment) => payment.Status == PaymentStatus.Paid && !InsurerReceipt(payment);
     public static decimal Allocate(decimal amount, int count, int number)
     {
@@ -84,6 +84,8 @@ public partial class CourseFinanceService(ApplicationDbContext db)
         else
         {
             var insurance = context.IsInsurance;
+            if (insurance && !await db.InsuranceCompanies.AnyAsync(c => c.Id == patient.InsuranceCompanyId && c.IsActive))
+                errors.Add("InsuranceCompanyInactive");
             var otherAgreements = insurance ? await db.TreatmentCourseAgreements.AsNoTracking().Where(a => a.PatientId == patient.Id && a.FundingType == "Insurance").ToListAsync() : [];
             var legacyOutside = insurance ? await db.Appointments.CountAsync(a => a.PatientId == patient.Id && a.AppointmentType == "Session" &&
                 a.TreatmentPlanSession != null && a.TreatmentPlanSession.TreatmentPlanId != plan.Id &&

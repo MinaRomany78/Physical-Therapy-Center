@@ -95,7 +95,7 @@ public sealed class BillingQueryService(ApplicationDbContext db)
         rows = rows.Where(r=>(q.DateBasis!="Collection" || r.Invoice.Payments.Any(ReceiptInScope)) &&
             (q.Method==null || r.Invoice.Payments.Any(p=>p.Status==PaymentStatus.Paid && (finance || CourseFinanceService.PatientReceipt(p)) &&
                 (p.CollectionMethod ?? p.PaymentMethod.ToString())==q.Method.ToString() && (q.DateBasis!="Collection" || ReceiptInScope(p)))))
-            .Where(r=>q.ClaimStatus==null || ClaimStatus(r)==q.ClaimStatus).ToList();
+            .Where(r=>q.ClaimStatus==null || (q.ClaimStatus=="Outstanding" ? r.Claim!=null && ClaimStatus(r)!="Settled" : ClaimStatus(r)==q.ClaimStatus)).ToList();
         var details = rows.Select(r=>{
             var i=r.Invoice; var paid=i.Payments.Where(CourseFinanceService.PatientReceipt).Sum(p=>p.Amount);
             var insurer=i.Payments.Where(CourseFinanceService.InsurerReceipt).Sum(p=>p.Amount);

@@ -8,7 +8,7 @@ public class InsuranceFinanceQuery : BillingQuery
     [RegularExpression("^[0-9]{4}-(0[1-9]|1[0-2])$")] public string? ServiceMonth { get; set; }
     [MaxLength(100)] public string? CompanySearch { get; set; }
     [MaxLength(150)] public string? ClaimReference { get; set; }
-    [RegularExpression("^(Unsubmitted|Unpaid|Partial|Settled)$")] public string? PaymentState { get; set; }
+    [RegularExpression("^(Unsubmitted|Unpaid|Partial|Settled|Outstanding)$")] public string? PaymentState { get; set; }
 }
 public record InsurerAmounts(int Sessions,decimal Earned,decimal Submitted,decimal Receipts,decimal Remaining,int ReceiptCount);
 public record InsuranceCompanyAccount(int CompanyId,string Name,InsurerAmounts Amounts,int UndatedInvoices);

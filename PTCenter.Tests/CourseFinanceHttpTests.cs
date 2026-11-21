@@ -17,7 +17,7 @@ public class CourseFinanceHttpTests
     [Fact] public async Task Concurrent_course_batches_receipts_and_starts_cannot_duplicate_charges_or_overspend_coverage()
     {
         using var host=new BookingTestHost();using var client=host.CreateClient(new(){BaseAddress=new("https://localhost")});
-        client.DefaultRequestHeaders.Authorization=new("Bearer",BookingTestHost.Token("Receptionist"));
+        client.DefaultRequestHeaders.Authorization=new("Bearer",await host.TokenAsync("Receptionist"));
         int patientId,planId;
         using(var scope=host.Services.CreateScope()) {
             var db=scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();await db.Database.EnsureCreatedAsync();

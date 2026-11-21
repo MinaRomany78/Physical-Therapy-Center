@@ -26,6 +26,7 @@ public class AuthService(UserManager<ApplicationUser> userManager,SignInManager<
         ?? await _userManager.FindByEmailAsync(request.UserName);
         if (user is null)
             return Result.Failure<AuthResponse>(UserErrors.InvalidCredentials);
+        if (!user.IsActive) return Result.Failure<AuthResponse>(UserErrors.LockedUser);
 
         // منع تسجيل الدخول إذا لم يتم تأكيد البريد الإلكتروني
         if (!user.EmailConfirmed)

@@ -166,7 +166,7 @@ public class ReceptionAccessTests
     {
         using var host=new BookingTestHost();using var client=host.CreateClient(new(){BaseAddress=new("https://localhost")});
         await ReceptionAccessFixture.SeedAsync(host);
-        client.DefaultRequestHeaders.Authorization=new("Bearer",BookingTestHost.Token("Unrecognized"));
+        client.DefaultRequestHeaders.Authorization=new("Bearer",await host.TokenAsync("Unrecognized"));
         Assert.Equal(HttpStatusCode.Forbidden,(await client.GetAsync("/api/Receptionist/clinicians")).StatusCode);
         await ReceptionAccessFixture.LoginAsync(client,"Ceo");Assert.Equal(HttpStatusCode.OK,(await client.GetAsync("/api/Users/GetAll")).StatusCode);
         Assert.Equal(HttpStatusCode.OK,(await client.PostAsJsonAsync("/api/InsuranceCompanies/Add",new{name="CEO managed insurer",isActive=true})).StatusCode);
@@ -187,7 +187,7 @@ public class ReceptionAccessTests
         using var host=new BookingTestHost();using var client=host.CreateClient(new(){BaseAddress=new("https://localhost")});
         using var anonymous=new HttpRequestMessage(new(method),url){Content=JsonContent.Create(new{})};
         Assert.Equal(HttpStatusCode.Unauthorized,(await client.SendAsync(anonymous)).StatusCode);
-        client.DefaultRequestHeaders.Authorization=new("Bearer",BookingTestHost.Token("Patient"));
+        client.DefaultRequestHeaders.Authorization=new("Bearer",await host.TokenAsync("Patient"));
         using var patient=new HttpRequestMessage(new(method),url){Content=JsonContent.Create(new{})};
         Assert.Equal(HttpStatusCode.Forbidden,(await client.SendAsync(patient)).StatusCode);
     }

@@ -16,8 +16,12 @@ public class InsuranceCompanyService(ApplicationDbContext context) : IInsuranceC
 
     public async Task<Result<InsuranceCompanyResponse>> AddAsync(CreateInsuranceCompanyRequest request)
     {
+        await using var tx = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        await ClinicMutationLock.AcquireAsync(_context);
+        request.Name = request.Name?.Trim() ?? "";
+        if (request.Name.Length == 0) return Result.Failure<InsuranceCompanyResponse>(new Error("InsuranceCompany.Required", "Company name is required.", 400));
         var companyExists = await _context.InsuranceCompanies
-            .AnyAsync(x => x.Name == request.Name);
+            .AnyAsync(x => x.Name.ToUpper() == request.Name.ToUpper());
 
         if (companyExists)
             return Result.Failure<InsuranceCompanyResponse>(
@@ -29,8 +33,7 @@ public class InsuranceCompanyService(ApplicationDbContext context) : IInsuranceC
         await _context.InsuranceCompanies.AddAsync(company);
 
         await _context.SaveChangesAsync();
-
-
+        await tx.CommitAsync();
         var response = company.Adapt<InsuranceCompanyResponse>();
 
         return Result.Success(response);
@@ -40,7 +43,6 @@ public class InsuranceCompanyService(ApplicationDbContext context) : IInsuranceC
     public async Task<Result<List<InsuranceCompanyResponse>>> GetAllAsync()
     {
         var companies = await _context.InsuranceCompanies
-            .Include(x => x.Patients)
             .AsNoTracking()
             .ToListAsync();
 
@@ -54,7 +56,6 @@ public class InsuranceCompanyService(ApplicationDbContext context) : IInsuranceC
     public async Task<Result<InsuranceCompanyResponse>> GetByIdAsync(int id)
     {
         var company = await _context.InsuranceCompanies
-            .Include(x => x.Patients)
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == id);
 
@@ -74,6 +75,10 @@ public class InsuranceCompanyService(ApplicationDbContext context) : IInsuranceC
         int id,
         UpdateInsuranceCompanyRequest request)
     {
+        await using var tx = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        await ClinicMutationLock.AcquireAsync(_context);
+        request.Name = request.Name?.Trim() ?? "";
+        if (request.Name.Length == 0) return Result.Failure<InsuranceCompanyResponse>(new Error("InsuranceCompany.Required", "Company name is required.", 400));
         var company = await _context.InsuranceCompanies
             .FirstOrDefaultAsync(x => x.Id == id);
 
@@ -83,8 +88,10 @@ public class InsuranceCompanyService(ApplicationDbContext context) : IInsuranceC
                 InsuranceCompanyErrors.InsuranceCompanyNotFound);
 
 
+        if (request.Version != null && request.Version != (company.UpdatedAt?.ToString("O") ?? "new"))
+            return Result.Failure<InsuranceCompanyResponse>(new Error("InsuranceCompany.Conflict", "Company settings changed. Reload before saving.", 409));
         var nameExists = await _context.InsuranceCompanies
-            .AnyAsync(x => x.Name == request.Name && x.Id != id);
+            .AnyAsync(x => x.Name.ToUpper() == request.Name.ToUpper() && x.Id != id);
 
 
         if (nameExists)
@@ -98,8 +105,7 @@ public class InsuranceCompanyService(ApplicationDbContext context) : IInsuranceC
         company.IsActive = request.IsActive;
         company.Hotline = request.Hotline;
         await _context.SaveChangesAsync();
-
-
+        await tx.CommitAsync();
         return await GetByIdAsync(id);
     }
 
@@ -115,7 +121,12 @@ public class InsuranceCompanyService(ApplicationDbContext context) : IInsuranceC
                 InsuranceCompanyErrors.InsuranceCompanyNotFound);
 
 
-        _context.InsuranceCompanies.Remove(company);
+        if (await _context.Patients.IgnoreQueryFilters().AnyAsync(p => p.InsuranceCompanyId == id) ||
+            await _context.TreatmentCourseAgreements.IgnoreQueryFilters().AnyAsync(a => a.InsuranceCompanyId == id) ||
+            await _context.InsuranceClaims.IgnoreQueryFilters().AnyAsync(c => c.InsuranceCompanyId == id) ||
+            await _context.InsuranceChequeReceipts.IgnoreQueryFilters().AnyAsync(c => c.InsuranceCompanyId == id))
+            return Result.Failure(new Error("InsuranceCompany.LinkedHistory", "This company has linked history. Deactivate it instead; existing agreements, claims and receipts are retained.", 409));
+        company.IsActive = false; // Retain even an unused company as configuration history.
 
 
         await _context.SaveChangesAsync();

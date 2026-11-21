@@ -12,6 +12,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<ApplicationUser> ApplicationUsers { get; set; } = null!;
     
     public DbSet<Patient> Patients { get; set; }
+    public DbSet<ClinicSettings> ClinicSettings { get; set; }
 
     public DbSet<InsuranceCompany> InsuranceCompanies { get; set; }
     public DbSet<InsuranceDetails> InsuranceDetails { get; set; }

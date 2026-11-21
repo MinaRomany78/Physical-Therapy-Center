@@ -30,7 +30,7 @@ public partial class BookingService
     private async Task<(string Name, string Role)> RecoveryClinician(string id, bool assessment = false)
     {
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == id) ?? throw Rule("ClinicianEligibility", "Select an eligible clinician.");
-        if (user.LockoutEnd > DateTimeOffset.UtcNow) throw Rule("ClinicianEligibility", "This clinician is unavailable.", 409);
+        if (!user.IsActive || user.LockoutEnd > DateTimeOffset.UtcNow) throw Rule("ClinicianEligibility", "This clinician is unavailable.", 409);
         var roles = await (from membership in db.UserRoles join role in db.Roles on membership.RoleId equals role.Id where membership.UserId == id select role.Name).ToListAsync();
         var kind = roles.Contains("Senior") ? "Senior" : roles.Contains("Doctor") ? "Doctor" : "";
         if (kind == "" || assessment && kind != "Senior") throw Rule("ClinicianEligibility", "Initial assessments require an eligible Senior.", 409);

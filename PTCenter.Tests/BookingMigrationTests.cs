@@ -17,13 +17,17 @@ public class BookingMigrationTests
         var retained=new[]{"20261031164400_DoctorClinicalWorkspace","20261104195622_ClinicianAbsenceRecovery",
             "20261106140342_ReleaseReadinessPatientRegistration","20261106160811_InsuranceChequeReceipts"};
         Assert.Equal(retained,chain.Where(retained.Contains).ToArray());
-        Assert.Equal("20261107120334_DocumentUploadRetrySafety",chain[^1]);
+        Assert.Equal("20261121153041_CeoWorkspace",chain[^1]);
         var draft=db.GetService<IMigrator>().GenerateScript(retained[^1],"20261107105511_AssessmentDraftPersistence");
         Assert.Contains("ALTER TABLE [Assessments] ADD [DraftJson] nvarchar(max) NULL",draft);
         Assert.DoesNotContain("UPDATE [",draft); Assert.DoesNotContain("DROP ",draft);
-        var upload=db.GetService<IMigrator>().GenerateScript("20261107105511_AssessmentDraftPersistence",chain[^1]);
+        var upload=db.GetService<IMigrator>().GenerateScript("20261107105511_AssessmentDraftPersistence","20261107120334_DocumentUploadRetrySafety");
         Assert.Contains("[UploadOperationKey] nvarchar(100) NULL",upload);Assert.Contains("CREATE UNIQUE INDEX",upload);
         Assert.DoesNotContain("UPDATE [",upload);Assert.DoesNotContain("DROP ",upload);Assert.DoesNotContain("DELETE ",upload);
+        var ceo=db.GetService<IMigrator>().GenerateScript("20261107120334_DocumentUploadRetrySafety",chain[^1]);
+        Assert.Contains("CREATE TABLE [ClinicSettings]",ceo);Assert.Contains("[IsActive] bit NOT NULL DEFAULT",ceo);
+        Assert.Contains("IX_Payments_Status_PaymentDate",ceo);
+        foreach(var forbidden in new[]{"DROP TABLE","DROP COLUMN","ALTER COLUMN","DELETE FROM","TRUNCATE","UPDATE [Invoices]","UPDATE [Payments]","UPDATE [Appointments]"})Assert.DoesNotContain(forbidden,ceo);
         var sql=db.GetService<IMigrator>().GenerateScript(retained[1],retained[3],MigrationsSqlGenerationOptions.Idempotent);
         Assert.Contains("[RegistrationOperationKey]",sql);
         Assert.Contains("CREATE UNIQUE INDEX [IX_Patients_RegistrationOperationKey]",sql);
