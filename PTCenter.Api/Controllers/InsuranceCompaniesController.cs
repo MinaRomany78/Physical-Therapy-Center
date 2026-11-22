@@ -3,6 +3,9 @@ using Microsoft.AspNetCore.Mvc;
 using PTCenter.Api.Extensions;
 using PTCenter.Application.Contracts.InsuranceCompany;
 using PTCenter.Application.Interfaces;
+using Microsoft.EntityFrameworkCore;
+using PTCenter.Application.Contracts.Ceo;
+using PTCenter.Infrastructure.Persistence;
 
 namespace PTCenter.Api.Controllers;
 
@@ -13,6 +16,20 @@ public class InsuranceCompaniesController(
     IInsuranceCompanyService insuranceCompanyService) : ControllerBase
 {
     private readonly IInsuranceCompanyService _insuranceCompanyService = insuranceCompanyService;
+
+    [HttpGet]
+    [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.Administration)]
+    public async Task<IActionResult> Search([FromQuery] CompanyQuery q, [FromServices] ApplicationDbContext db, CancellationToken ct)
+    {
+        var rows = db.InsuranceCompanies.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(q.Search)) rows = rows.Where(x => x.Name.Contains(q.Search.Trim()));
+        if (q.Active != null) rows = rows.Where(x => x.IsActive == q.Active);
+        var total = await rows.CountAsync(ct);
+        var items = await rows.OrderBy(x => x.Name).ThenBy(x => x.Id).Skip((q.Page-1)*q.PageSize).Take(q.PageSize)
+            .Select(x => new { x.Id, x.Name, x.PortalUrl, x.Hotline, x.IsActive, x.UpdatedAt, Version = x.UpdatedAt == null ? "new" : x.UpdatedAt.Value.ToString("O"),
+                LinkedPatients = db.Patients.IgnoreQueryFilters().Count(p => p.InsuranceCompanyId == x.Id) }).ToListAsync(ct);
+        return Ok(new { items, total, q.Page, q.PageSize });
+    }
 
 
     [HttpPost]

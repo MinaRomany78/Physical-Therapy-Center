@@ -85,7 +85,7 @@ public sealed class InsuranceFinanceService(ApplicationDbContext db,TimeProvider
         rows=rows.Where(c=>q.CompanyId==null || c.CompanyId==q.CompanyId)
             .Where(c=>string.IsNullOrWhiteSpace(q.CompanySearch) || c.Name.Contains(q.CompanySearch.Trim(),StringComparison.OrdinalIgnoreCase))
             .Where(c=>string.IsNullOrWhiteSpace(q.Search) && string.IsNullOrWhiteSpace(q.ClaimReference) || c.Amounts.Sessions>0)
-            .Where(c=>q.PaymentState==null || State(c.Amounts)==q.PaymentState).OrderByDescending(c=>c.Amounts.Remaining).ThenBy(c=>c.Name,StringComparer.OrdinalIgnoreCase).ThenBy(c=>c.CompanyId).ToList();
+            .Where(c=>q.PaymentState==null || (q.PaymentState=="Outstanding" ? c.Amounts.Remaining>0 : State(c.Amounts)==q.PaymentState)).OrderByDescending(c=>c.Amounts.Remaining).ThenBy(c=>c.Name,StringComparer.OrdinalIgnoreCase).ThenBy(c=>c.CompanyId).ToList();
         var matching=rows.Select(c=>c.CompanyId).ToHashSet();var selected=earned.Where(r=>matching.Contains(r.Invoice.CompanyId ?? 0)).ToList();
         return new(rows.Skip(Skip(q)).Take(q.PageSize).ToList(),rows.Count,selected.Count,q.Page,q.PageSize,await TotalsAsync(selected,ct),all.Count(r=>r.Invoice.CompanyId==null),all.Count(r=>r.Invoice.AgreementId==null && r.Invoice.DeliveredAt==null));
     }
@@ -97,7 +97,7 @@ public sealed class InsuranceFinanceService(ApplicationDbContext db,TimeProvider
         var month=q.ServiceMonth ?? months.FirstOrDefault(m=>m.Amounts.Remaining>0)?.Month ?? months.FirstOrDefault()?.Month ?? Today.ToString("yyyy-MM",CultureInfo.InvariantCulture);
         var rows=InMonth(all,month).ToList();
         var patients=rows.GroupBy(r=>r.Invoice.PatientId).Select(g=>new InsurancePatientAccount(g.Key,g.First().Invoice.PatientName,null,Sum(g),State(Sum(g))))
-            .Where(p=>q.PaymentState==null || p.State==q.PaymentState).OrderBy(p=>p.Name,StringComparer.OrdinalIgnoreCase).ThenBy(p=>p.PatientId).ToList();
+            .Where(p=>q.PaymentState==null || (q.PaymentState=="Outstanding" ? p.Amounts.Remaining>0 : p.State==q.PaymentState)).OrderBy(p=>p.Name,StringComparer.OrdinalIgnoreCase).ThenBy(p=>p.PatientId).ToList();
         var patientIds=patients.Select(p=>p.PatientId).ToArray();var phones=await db.Patients.AsNoTracking().Where(p=>patientIds.Contains(p.Id)).Select(p=>new{p.Id,p.ApplicationUser.PhoneNumber}).ToDictionaryAsync(p=>p.Id,p=>p.PhoneNumber,ct);
         patients=patients.Select(p=>p with {Phone=phones.GetValueOrDefault(p.PatientId)}).ToList();rows=rows.Where(r=>patientIds.Contains(r.Invoice.PatientId)).ToList();
         return new(companyId,name,month,months,patients.Skip(Skip(q)).Take(q.PageSize).ToList(),patients.Count,rows.Count,q.Page,q.PageSize,await TotalsAsync(rows,ct),all.Count(r=>r.Invoice.AgreementId==null && r.Invoice.DeliveredAt==null));
@@ -105,13 +105,13 @@ public sealed class InsuranceFinanceService(ApplicationDbContext db,TimeProvider
     public async Task<InsuranceSessionPage> SessionsAsync(int companyId,int patientId,InsuranceFinanceQuery q,CancellationToken ct=default)
     {
         q.CompanyId=companyId;var all=await RowsAsync(q,ct);var rows=InMonth(all,q.ServiceMonth ?? throw Rule("MonthRequired","Select a service month.")).Where(r=>r.Invoice.PatientId==patientId).OrderBy(r=>r.Invoice.DeliveredAt).ThenBy(r=>r.Invoice.Id).ToList();
-        if(q.PaymentState!=null && State(Sum(rows))!=q.PaymentState)rows=[];
+        if(q.PaymentState!=null && (q.PaymentState=="Outstanding" ? Sum(rows).Remaining<=0 : State(Sum(rows))!=q.PaymentState))rows=[];
         return new(rows.Skip(Skip(q)).Take(q.PageSize).ToList(),rows.Count,q.Page,q.PageSize,await TotalsAsync(rows,ct));
     }
     public async Task<IReadOnlyList<InsuranceSession>> SelectedSessionsAsync(InsuranceFinanceQuery q,CancellationToken ct=default)
     {
         var rows=await RowsAsync(q,ct);rows=(q.ServiceMonth!=null?InMonth(rows,q.ServiceMonth):rows.Where(Delivered)).ToList();
-        if(q.PaymentState!=null){var patients=rows.GroupBy(r=>r.Invoice.PatientId).Where(g=>State(Sum(g))==q.PaymentState).Select(g=>g.Key).ToHashSet();rows=rows.Where(r=>patients.Contains(r.Invoice.PatientId)).ToList();}
+        if(q.PaymentState!=null){var patients=rows.GroupBy(r=>r.Invoice.PatientId).Where(g=>q.PaymentState=="Outstanding" ? Sum(g).Remaining>0 : State(Sum(g))==q.PaymentState).Select(g=>g.Key).ToHashSet();rows=rows.Where(r=>patients.Contains(r.Invoice.PatientId)).ToList();}
         return rows.OrderBy(r=>r.Invoice.PatientName,StringComparer.OrdinalIgnoreCase).ThenBy(r=>r.Invoice.PatientId).ThenBy(r=>r.Invoice.DeliveredAt).ThenBy(r=>r.Invoice.Id).ToList();
     }
     public async Task<MonthlyClaimReceipt> SubmitMonthlyAsync(MonthlyClaimRequest request,string actor,CancellationToken ct=default)
@@ -194,14 +194,26 @@ public sealed class InsuranceFinanceService(ApplicationDbContext db,TimeProvider
     }
     public async Task<ChequeReceipt> ReceiptAsync(int id,CancellationToken ct=default)
     {
-        var header=await db.InsuranceChequeReceipts.AsNoTracking().SingleOrDefaultAsync(r=>r.Id==id,ct) ?? throw Rule("ReceiptNotFound","Cheque receipt was not found.",404);
-        var payments=await db.Payments.AsNoTracking().Include(p=>p.Invoice).ThenInclude(i=>i.Patient).ThenInclude(p=>p.ApplicationUser).Where(p=>p.InsuranceChequeReceiptId==id).OrderBy(p=>p.Id).ToListAsync(ct);
-        var claimIds=payments.Select(p=>p.InsuranceClaimId).ToArray();var claims=await db.InsuranceClaims.AsNoTracking().Where(c=>claimIds.Contains(c.Id)).ToDictionaryAsync(c=>c.Id,ct);
-        var allocations=payments.Select(p=>new ChequeAllocation(p.Id,p.InsuranceClaimId!.Value,p.InvoiceId,p.Invoice.InvoiceNumber,p.Invoice.PatientId,p.Invoice.Patient.ApplicationUser.FullName,
-            p.InsuranceServiceMonth!.Value.ToString("yyyy-MM",CultureInfo.InvariantCulture),p.InsuranceServiceDeliveredAt!.Value,claims[p.InsuranceClaimId.Value].SubmissionReference,
-            p.InsurerBalanceBefore!.Value,p.Amount,p.InsurerBalanceBefore.Value-p.Amount)).ToList();
-        var company=await db.InsuranceCompanies.Where(c=>c.Id==header.InsuranceCompanyId).Select(c=>c.Name).SingleAsync(ct);
-        return new(id,header.IdempotencyKey,header.InsuranceCompanyId,company,header.ChequeNumber,header.BankName,header.Amount,header.ReceivedOn,header.ChequeDate,header.Notes,header.RecordedBy,header.RecordedAt,allocations);
+        var receipts=await ReceiptsAsync([id],ct);
+        return receipts.GetValueOrDefault(id) ?? throw Rule("ReceiptNotFound","Cheque receipt was not found.",404);
+    }
+    private async Task<Dictionary<int,ChequeReceipt>> ReceiptsAsync(int[] ids,CancellationToken ct)
+    {
+        if(ids.Length==0)return [];
+        var headers=await db.InsuranceChequeReceipts.AsNoTracking().Where(r=>ids.Contains(r.Id)).ToListAsync(ct);
+        // Receipt evidence must retain archived identities and its complete original allocation scope.
+        var payments=await db.Payments.IgnoreQueryFilters().AsNoTracking().Include(p=>p.Invoice).ThenInclude(i=>i.Patient).ThenInclude(p=>p.ApplicationUser)
+            .Where(p=>p.InsuranceChequeReceiptId!=null && ids.Contains(p.InsuranceChequeReceiptId.Value)).OrderBy(p=>p.Id).ToListAsync(ct);
+        var claimIds=payments.Select(p=>p.InsuranceClaimId).ToArray();
+        var claims=await db.InsuranceClaims.IgnoreQueryFilters().AsNoTracking().Where(c=>claimIds.Contains(c.Id)).ToDictionaryAsync(c=>c.Id,ct);
+        var companyIds=headers.Select(h=>h.InsuranceCompanyId).Distinct().ToArray();
+        var companies=await db.InsuranceCompanies.IgnoreQueryFilters().AsNoTracking().Where(c=>companyIds.Contains(c.Id)).ToDictionaryAsync(c=>c.Id,c=>c.Name,ct);
+        var byReceipt=payments.ToLookup(p=>p.InsuranceChequeReceiptId!.Value);
+        return headers.ToDictionary(h=>h.Id,h=>new ChequeReceipt(h.Id,h.IdempotencyKey,h.InsuranceCompanyId,companies.GetValueOrDefault(h.InsuranceCompanyId) ?? "Historical company unavailable",
+            h.ChequeNumber,h.BankName,h.Amount,h.ReceivedOn,h.ChequeDate,h.Notes,h.RecordedBy,h.RecordedAt,
+            byReceipt[h.Id].Select(p=>new ChequeAllocation(p.Id,p.InsuranceClaimId!.Value,p.InvoiceId,p.Invoice.InvoiceNumber,p.Invoice.PatientId,p.Invoice.Patient.ApplicationUser.FullName,
+                p.InsuranceServiceMonth!.Value.ToString("yyyy-MM",CultureInfo.InvariantCulture),p.InsuranceServiceDeliveredAt!.Value,claims[p.InsuranceClaimId.Value].SubmissionReference,
+                p.InsurerBalanceBefore!.Value,p.Amount,p.InsurerBalanceBefore.Value-p.Amount)).ToList()));
     }
     public async Task<ChequeReceipt> ReconcileChequeAsync(string key,CancellationToken ct=default)
     {
@@ -219,7 +231,8 @@ public sealed class InsuranceFinanceService(ApplicationDbContext db,TimeProvider
         var headers=await db.InsuranceChequeReceipts.AsNoTracking().Where(r=>chequeIds.Contains(r.Id)).ToListAsync(ct);
         var legacy=payments.Where(p=>p.InsuranceChequeReceiptId==null).Select(p=>new InsurerLegacyReceipt(p.Id,p.InvoiceId,p.Invoice.InvoiceNumber,p.InsuranceClaimId,p.TransactionId,p.Amount,p.PaymentDate,p.CollectionMethod ?? p.PaymentMethod.ToString())).ToList();
         var ordered=headers.Select(h=>(Date:h.RecordedAt,Id:h.Id,Cheque:true)).Concat(legacy.Select(p=>(Date:p.ReceivedAt,Id:p.PaymentId,Cheque:false))).OrderByDescending(i=>i.Date).ThenByDescending(i=>i.Id).ToList();
-        var page=ordered.Skip(Skip(q)).Take(q.PageSize).ToList();var result=new List<ChequeReceipt>();foreach(var item in page.Where(p=>p.Cheque))result.Add(await ReceiptAsync(item.Id,ct));
+        var page=ordered.Skip(Skip(q)).Take(q.PageSize).ToList();var receipts=await ReceiptsAsync(page.Where(p=>p.Cheque).Select(p=>p.Id).ToArray(),ct);
+        var result=page.Where(p=>p.Cheque).Select(p=>receipts[p.Id]).ToList();
         return new(result,ordered.Count,q.Page,q.PageSize,headers.Sum(h=>h.Amount)+legacy.Sum(p=>p.Amount),payments.Sum(p=>p.Amount),legacy.Where(p=>page.Any(i=>!i.Cheque && i.Id==p.PaymentId)).ToList(),legacy.Sum(p=>p.Amount));
     }
     public async Task<byte[]> StatementAsync(int companyId,InsuranceFinanceQuery q,CancellationToken ct=default)

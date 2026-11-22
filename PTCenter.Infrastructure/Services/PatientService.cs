@@ -52,7 +52,7 @@ public class PatientService(
                     return Result.Success((await GetPatientResponseAsync(replay.Id))!);
                 }
             }
-            if (request.InsuranceCompanyId is int company && !await _context.InsuranceCompanies.AnyAsync(c=>c.Id==company))
+            if (request.InsuranceCompanyId is int company && !await _context.InsuranceCompanies.AnyAsync(c=>c.Id==company && c.IsActive))
                 return Result.Failure<PatientResponse>(PatientErrors.InsuranceCompanyNotFound);
             if (email != null && await _userManager.FindByEmailAsync(email) != null)
                 return Result.Failure<PatientResponse>(PatientErrors.PatientAlreadyExists);
@@ -217,7 +217,7 @@ public class PatientService(
         {
             var companyExists = await _context.InsuranceCompanies
                 .AnyAsync(
-                    x => x.Id == request.InsuranceCompanyId.Value);
+                    x => x.Id == request.InsuranceCompanyId.Value && (x.IsActive || patient.InsuranceCompanyId == x.Id));
 
             if (!companyExists)
             {

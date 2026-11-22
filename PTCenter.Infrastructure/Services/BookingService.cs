@@ -88,7 +88,7 @@ public partial class BookingService(ApplicationDbContext db, TimeProvider? clock
         var users = await (from user in db.Users.AsNoTracking()
                       join membership in db.UserRoles on user.Id equals membership.UserId
                       join userRole in db.Roles on membership.RoleId equals userRole.Id
-                      where userRole.Name == role && (gender == null || user.Gender == gender)
+                      where user.IsActive && userRole.Name == role && (gender == null || user.Gender == gender)
                       select new { user.Id, user.FullName, user.Gender, user.LockoutEnd }).ToListAsync();
         var active = await db.Appointments.AsNoTracking().Where(a => a.Status == AppointmentStatus.InProgress && (a.DoctorId != null && a.TreatmentStartedAt != null && a.TreatmentEndedAt == null || a.SeniorId != null && a.ActualCheckIn != null && a.ActualCheckOut == null))
             .Select(a => new { a.DoctorId, a.SeniorId }).ToListAsync();

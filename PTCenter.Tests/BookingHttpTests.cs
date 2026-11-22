@@ -50,9 +50,22 @@ public sealed class BookingTestHost : WebApplicationFactory<Program>
             services.AddDbContext<ApplicationDbContext>(options => options.UseSqlite(new SqliteConnectionStringBuilder { DataSource=databasePath, DefaultTimeout=15, Pooling=false, ForeignKeys=true }.ToString()));
         });
     }
-    internal static string Token(string role) => new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(
-        issuer: "ptcenter-local-tests", audience: "ptcenter-local-tests", claims: [new(ClaimTypes.NameIdentifier, "local-staff"), new(ClaimTypes.Role, role)],
-        expires: DateTime.UtcNow.AddHours(1), signingCredentials: new(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Key)), SecurityAlgorithms.HmacSha256)));
+    internal async Task<string> TokenAsync(string role)
+    {
+        // Auth middleware now validates durable active identity and current roles as well as JWT signature.
+        using var scope = Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await db.Database.EnsureCreatedAsync(); var id = "local-" + role;
+        if (!await db.Users.AnyAsync(u => u.Id == id))
+        {
+            if (!await db.Roles.AnyAsync(r => r.Name == role)) { db.Roles.Add(new Microsoft.AspNetCore.Identity.IdentityRole(role) { NormalizedName = role.ToUpperInvariant() }); await db.SaveChangesAsync(); }
+            db.Users.Add(new() { Id = id, UserName = id, FullName = "Local " + role, IsActive = true });
+            db.UserRoles.Add(new() { UserId = id, RoleId = (await db.Roles.SingleAsync(r => r.Name == role)).Id });
+            await db.SaveChangesAsync();
+        }
+        return new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(issuer:"ptcenter-local-tests",audience:"ptcenter-local-tests",
+            claims:[new(ClaimTypes.NameIdentifier,id),new(ClaimTypes.Role,role)],expires:DateTime.UtcNow.AddHours(1),
+            signingCredentials:new(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Key)),SecurityAlgorithms.HmacSha256)));
+    }
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
@@ -67,9 +80,9 @@ public class BookingHttpTests
         using var host = new BookingTestHost();
         using var client = host.CreateClient(new() { BaseAddress = new("https://localhost") });
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/Bookings/patients/1")).StatusCode);
-        client.DefaultRequestHeaders.Authorization = new("Bearer", BookingTestHost.Token("Patient"));
+        client.DefaultRequestHeaders.Authorization = new("Bearer", await host.TokenAsync("Patient"));
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/Bookings", new BookingRequest())).StatusCode);
-        client.DefaultRequestHeaders.Authorization = new("Bearer", BookingTestHost.Token("Receptionist"));
+        client.DefaultRequestHeaders.Authorization = new("Bearer", await host.TokenAsync("Receptionist"));
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/Bookings/assessments/complete", new CompleteAssessmentRequest())).StatusCode);
     }
 
@@ -89,7 +102,7 @@ public class BookingHttpTests
             for(var day=0;day<7;day++) db.DoctorSchedules.Add(new(){DoctorId="http-senior",DayOfWeek=day,StartTime=new(8,0),EndTime=new(20,0)});
             await db.SaveChangesAsync();id=patient.Id;
         }
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", BookingTestHost.Token("Receptionist"));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await host.TokenAsync("Receptionist"));
         var options = await client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/Bookings/patients");
         var option = options.GetProperty("items")[0];
         Assert.False(option.TryGetProperty("insuranceDetails", out _)); Assert.False(option.TryGetProperty("assessments", out _));
