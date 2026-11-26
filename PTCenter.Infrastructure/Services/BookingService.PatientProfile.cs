@@ -64,7 +64,10 @@ public partial class BookingService
                 }
                 return new ProfileSession(s.Id,s.SessionNumber,appointment?.Id,appointment==null?null:ScheduleVersion(appointment),appointment?.DoctorId??appointment?.SeniorId,
                     appointment==null?plan.Doctor?.FullName??"":clinicianNames.GetValueOrDefault(appointment.DoctorId??appointment.SeniorId??"")??"",appointment?.RoomId,appointment?.Room?.Name,appointment?.StartTime??s.SessionDate,appointment?.EndTime,
-                    appointment?.ActualCheckIn??s.CheckIn,appointment?.ActualCheckOut??s.CheckOut,appointment?.Status.ToString()??(s.Status==SessionStatus.Pending?"NotScheduled":s.Status.ToString()),coverage,bill?.PatientAmount,bill==null?null:PatientPaid(bill),appointment!=null&&plan.Status==StatusPlan.Active&&CanReschedule(appointment));
+                    appointment?.ActualCheckIn??s.CheckIn,appointment?.ActualCheckOut??s.CheckOut,appointment?.Status.ToString()??(s.Status==SessionStatus.Pending?"NotScheduled":s.Status.ToString()),coverage,bill?.PatientAmount,bill==null?null:PatientPaid(bill),appointment!=null&&plan.Status==StatusPlan.Active&&CanReschedule(appointment)) {
+                    ReceptionCheckIn=appointment?.ActualCheckIn, ReceptionCheckOut=appointment?.ActualCheckOut,
+                    ClinicalStart=appointment?.TreatmentStartedAt??s.CheckIn, ClinicalEnd=appointment?.TreatmentEndedAt??s.CheckOut
+                };
             }).ToList();
             var payments=bills.SelectMany(i=>i.Payments.Where(p=>p.Status==PaymentStatus.Paid).Select(p=>new ProfilePayment(p.Id,i.Id,i.InvoiceNumber,p.Amount,Insurer(p)?"Insurance":"Patient",p.CollectionMethod??p.PaymentMethod.ToString(),p.PaymentDate,p.TransactionId))).OrderByDescending(p=>p.Date).ToList();
             result.Add(new(plan.Id,plan.TreatmentType,plan.Status.ToString(),plan.Doctor?.FullName??"",plan.NumberOfSessions,plan.CompletedSessions,patientAmount,paid,Math.Max(0,patientAmount-paid),insurerAmount,insurerPaid,Math.Max(0,insurerAmount-insurerPaid),rows,payments,changes.Where(c=>c.TreatmentPlanId==plan.Id).Select(Activity).ToList()));

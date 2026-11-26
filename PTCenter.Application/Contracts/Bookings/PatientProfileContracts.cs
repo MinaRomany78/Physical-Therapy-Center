@@ -2,7 +2,13 @@ namespace PTCenter.Application.Contracts.Bookings;
 
 public record ProfileSession(int Id, int SessionNumber, int? AppointmentId, string? Version, string? ClinicianId, string DoctorName,
     int? RoomId, string? RoomName, DateTime? StartTime, DateTime? EndTime, DateTime? ActualCheckIn, DateTime? ActualCheckOut,
-    string Status, string PatientCoverage, decimal? PatientLiability, decimal? PatientPaid, bool CanReschedule);
+    string Status, string PatientCoverage, decimal? PatientLiability, decimal? PatientPaid, bool CanReschedule)
+{
+    public DateTime? ReceptionCheckIn { get; init; }
+    public DateTime? ReceptionCheckOut { get; init; }
+    public DateTime? ClinicalStart { get; init; }
+    public DateTime? ClinicalEnd { get; init; }
+}
 public record ProfilePayment(int Id,int InvoiceId,string InvoiceNumber,decimal Amount,string Payer,string Method,DateTime Date,string? Reference);
 public record ProfileActivity(int Id,int AppointmentId,DateTime ChangedAt,string ActorName,DateTime PreviousStart,DateTime PreviousEnd,
     string PreviousRoomName,DateTime NewStart,DateTime NewEnd,string NewRoomName,string? Reason) {
