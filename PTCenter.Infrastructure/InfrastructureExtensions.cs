@@ -13,6 +13,9 @@ using PTCenter.Infrastructure.Persistence;
 using PTCenter.Infrastructure.Services;
 using System.Security.Claims;
 using System.Text;
+using System.Data.Common;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 
 namespace PTCenter.Infrastructure;
 
@@ -91,6 +94,26 @@ public static class InfrastructureExtensions
                         var current = await (from ur in db.UserRoles join r in db.Roles on ur.RoleId equals r.Id where ur.UserId == id select r.Name!).ToListAsync();
                         var issued = validation.Principal!.FindAll(ClaimTypes.Role).Select(c => c.Value).ToHashSet();
                         if (!issued.SetEquals(current)) validation.Fail("Roles changed. Sign in again.");
+                    }, OnAuthenticationFailed = failure => {
+                        if (failure.Exception is DbException or TimeoutException)
+                        {
+                            // A database outage cannot prove active identity/current roles. Keep access closed
+                            // without treating an unverified account as invalid or exposing provider details.
+                            failure.HttpContext.Items["IdentityStoreUnavailable"] = true;
+                            failure.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                                .CreateLogger("IdentityStore").LogError(failure.Exception, "Identity verification is temporarily unavailable");
+                            failure.NoResult();
+                        }
+                        return Task.CompletedTask;
+                    }, OnChallenge = async challenge => {
+                        if (challenge.HttpContext.Items.ContainsKey("IdentityStoreUnavailable"))
+                        {
+                            challenge.HandleResponse();
+                            await Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable,
+                                title: "Authentication.Unavailable",
+                                detail: "Account verification is temporarily unavailable. Retry when service is restored.")
+                                .ExecuteAsync(challenge.HttpContext);
+                        }
                     }};
                     o.SaveToken = true;
                 });
