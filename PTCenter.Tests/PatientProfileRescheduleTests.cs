@@ -28,6 +28,28 @@ public sealed partial class BookingDatabaseTests
         var availability=await service.RescheduleAvailabilityAsync(appointment,CairoDate(start.UtcDateTime));
         return(availability,availability.Slots.First(s=>s.StartTime==start.UtcDateTime));
     }
+    [Fact] public async Task Profile_print_times_keep_Reception_and_clinical_events_separate()
+    {
+        var (receipt,_) = await ProfileBooking();
+        var appointment = await db.Appointments.Include(a=>a.TreatmentPlanSession).SingleAsync(a=>a.Id==receipt.Appointments[0].Id);
+        var start = appointment.StartTime;
+        appointment.ActualCheckIn = start.AddMinutes(-8);
+        appointment.ActualCheckOut = start.AddMinutes(65);
+        appointment.TreatmentStartedAt = start.AddMinutes(3);
+        appointment.TreatmentEndedAt = start.AddMinutes(54);
+        appointment.TreatmentPlanSession!.CheckIn = start.AddMinutes(4);
+        appointment.TreatmentPlanSession.CheckOut = start.AddMinutes(55);
+        await db.SaveChangesAsync();
+        var rows = (await service.ProfileAsync(patientId)).Courses.Single().Sessions;
+        var row = rows.Single(s=>s.AppointmentId==appointment.Id);
+        Assert.Equal(start.AddMinutes(-8),row.ReceptionCheckIn);
+        Assert.Equal(start.AddMinutes(65),row.ReceptionCheckOut);
+        Assert.Equal(start.AddMinutes(3),row.ClinicalStart);
+        Assert.Equal(start.AddMinutes(54),row.ClinicalEnd);
+        var untouched = rows.First(s=>s.AppointmentId!=appointment.Id);
+        Assert.Null(untouched.ReceptionCheckIn); Assert.Null(untouched.ReceptionCheckOut);
+        Assert.Null(untouched.ClinicalStart); Assert.Null(untouched.ClinicalEnd);
+    }
     [Theory][InlineData(0)][InlineData(5)]
     public async Task Inline_reschedule_preserves_course_other_sessions_finances_and_audits_once(int dayOffset)
     {
