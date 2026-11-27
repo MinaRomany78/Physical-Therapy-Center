@@ -8,7 +8,7 @@ namespace PTCenter.Infrastructure.Services;
 
 public partial class BookingService
 {
-    private static string ScheduleVersion(Appointment a) => Hash(new { a.Id,Start=a.StartTime.Ticks,End=a.EndTime.Ticks,a.RoomId,a.DoctorId,a.SeniorId,a.Status,CheckIn=a.ActualCheckIn?.Ticks,CheckOut=a.ActualCheckOut?.Ticks,Updated=a.UpdatedAt?.Ticks,Started=a.TreatmentStartedAt?.Ticks,Ended=a.TreatmentEndedAt?.Ticks });
+    private static string ScheduleVersion(Appointment a) => Hash(new { a.Id,Start=a.StartTime.Ticks,End=a.EndTime.Ticks,a.RoomId,a.DoctorId,a.SeniorId,a.Status,CheckIn=a.ActualCheckIn?.Ticks,CheckOut=a.ActualCheckOut?.Ticks,Updated=a.UpdatedAt?.Ticks });
     private static bool CanReschedule(Appointment a) => a.Status == AppointmentStatus.Pending && a.ActualCheckIn == null && a.ActualCheckOut == null && a.TreatmentStartedAt == null && a.TreatmentEndedAt == null && a.StartTime > DateTime.UtcNow &&
         (a.TreatmentPlanSession == null || a.TreatmentPlanSession.CheckIn == null && a.TreatmentPlanSession.CheckOut == null && a.TreatmentPlanSession.Status == SessionStatus.Pending);
     private static void RequireUpcoming(Appointment a) {
@@ -83,32 +83,15 @@ public partial class BookingService
         ConsentMethod=c.ConsentMethod,ConsentRecordedAt=c.ConsentRecordedAt,ConsentReason=c.ConsentReason
     };
 
-    public async Task<RescheduleAvailability> RescheduleAvailabilityAsync(int id,DateOnly date,CancellationToken cancellationToken=default,string? clinicianId=null)
+    public async Task<RescheduleAvailability> RescheduleAvailabilityAsync(int id,DateOnly date,CancellationToken cancellationToken=default)
     {
-        var appointment=await db.Appointments.AsNoTracking().Include(a=>a.TreatmentPlanSession).Include(a=>a.Room).SingleOrDefaultAsync(a=>a.Id==id,cancellationToken)??throw Rule("AppointmentNotFound","Appointment was not found.",404);
+        var appointment=await db.Appointments.AsNoTracking().Include(a=>a.TreatmentPlanSession).SingleOrDefaultAsync(a=>a.Id==id,cancellationToken)??throw Rule("AppointmentNotFound","Appointment was not found.",404);
         RequireUpcoming(appointment);
-        var currentClinician=appointment.DoctorId??appointment.SeniorId??"";
-        var clinician=string.IsNullOrWhiteSpace(clinicianId)?currentClinician:clinicianId;
-        var patient=await PatientAsync(appointment.PatientId);
-        var clinicians=await CliniciansForAsync(patient,appointment.AppointmentType=="Session"?"Doctor":"Senior",currentClinician);
+        var clinician=appointment.DoctorId??appointment.SeniorId??"";var patient=await PatientAsync(appointment.PatientId);
         var recovered=await HasRecoveryAssignmentAsync(appointment);
-        if(recovered) {
-            await RecoveryAppointment(id);
-            var identity=await RecoveryClinician(currentClinician,appointment.AppointmentType=="Assessment");
-            var gender=await db.Users.Where(u=>u.Id==currentClinician).Select(u=>u.Gender).SingleAsync();
-            if(gender==patient.ApplicationUser.Gender||await HasGenderConsentAsync(appointment,currentClinician)) {
-                // A retained Senior coverage assignment stays exclusive even when that employee also holds Doctor.
-                clinicians.RemoveAll(c=>c.Id==currentClinician);
-                clinicians.Insert(0,new(currentClinician,identity.Name,gender.ToString(),identity.Role,true,0));
-            }
-        }
-        var selected=clinicians.FirstOrDefault(c=>c.Id==clinician)??throw Rule("ClinicianEligibility","Select an eligible clinician matching the patient's gender or retained coverage.",409);
-        var clinicianName=selected.Name;var doctorTreatment=selected.Role=="Doctor"&&appointment.AppointmentType=="Session";
-        var currentName=await db.Users.Where(u=>u.Id==currentClinician).Select(u=>u.FullName).SingleOrDefaultAsync()??"";
-        var originallyInsured=appointment.InsuranceFunded||await db.Invoices.AnyAsync(i=>i.AppointmentId==id&&i.InsuranceAmount>0);
-        var eligibility=await PreviewCoreAsync(new(){PatientId=appointment.PatientId,ClinicianId=clinician,RoomId=appointment.RoomId??0,StartsAt=[new DateTimeOffset(DateTime.SpecifyKind(appointment.StartTime,DateTimeKind.Utc))],TreatmentPlanId=appointment.TreatmentPlanSession?.TreatmentPlanId},id,false,originallyInsured,appointment.EndTime-appointment.StartTime);
-        var eligibilityErrors=eligibility.Errors.Where(e=>e!="RoomRequired"&&!(recovered&&clinician==currentClinician&&e=="ClinicianEligibility")).ToList();
-        if((await ContextAsync(appointment.PatientId)).HasCompletedAssessment!=(appointment.AppointmentType=="Session"))eligibilityErrors.Add("AssessmentOnly");
+        string clinicianName;bool doctorTreatment;
+        if(recovered){var identity=await RecoveryClinician(clinician,appointment.AppointmentType=="Assessment");var gender=await db.Users.Where(u=>u.Id==clinician).Select(u=>u.Gender).SingleAsync();if(gender!=patient.ApplicationUser.Gender&&!await HasGenderConsentAsync(appointment,clinician))throw Rule("PhoneConsentRequired","Saved phone consent is required.",409);clinicianName=identity.Name;doctorTreatment=identity.Role=="Doctor";}
+        else{var clinicians=await CliniciansForAsync(patient,appointment.AppointmentType=="Session"?"Doctor":"Senior");var doctor=clinicians.FirstOrDefault(c=>c.Id==clinician)??throw Rule("ClinicianEligibility","The assigned clinician is no longer eligible.",409);clinicianName=doctor.Name;doctorTreatment=appointment.AppointmentType=="Session";}
         var today=DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow,ClinicTimeZone).DateTime);
         if(date<today||date>=DateOnly.MaxValue.AddDays(-1))throw Rule("DateRange","Choose a valid upcoming date.");
         var hours=await db.DoctorSchedules.AsNoTracking().Where(s=>s.DoctorId==clinician).ToListAsync(cancellationToken);
@@ -119,10 +102,10 @@ public partial class BookingService
         var earliest=DateTime.SpecifyKind(dayStart.AddDays(-1),DateTimeKind.Utc);var latest=DateTime.SpecifyKind(dayEnd.AddDays(1),DateTimeKind.Utc);
         var candidates=await db.Appointments.AsNoTracking().Where(a=>a.Id!=id && a.Status!=AppointmentStatus.Cancelled&&a.Status!=AppointmentStatus.NoShow&&a.Status!=AppointmentStatus.Completed &&
             (a.StartTime<latest&&a.EndTime>earliest||a.Status==AppointmentStatus.InProgress&&a.ActualCheckOut==null)).ToListAsync(cancellationToken);
-        var slots=new List<RescheduleSlot>();var notices=new List<string>(eligibilityErrors);
+        var slots=new List<RescheduleSlot>();var notices=new List<string>();
         var weeklyLimit=await WeeklyLimitAsync(appointment);
         if(weeklyLimit?.Conflict(ClinicCalendar.DayStart(date)) is {} frequencyConflict)notices.Add(frequencyConflict);
-        if(hours.Count==0)notices.Add("WorkingHoursNotConfigured");if(absences.Any(a=>ClinicianAbsenceRules.Overlaps(a,earliest,latest)))notices.Add("ClinicianAbsent");
+        if(hours.Count==0)notices.Add("WorkingHoursNotConfigured");if(absences.Count>0)notices.Add("ClinicianAbsent");
         var localTimes=new SortedSet<DateTime>();
         var duration=appointment.EndTime-appointment.StartTime;
         foreach(var schedule in hours.Where(s=>s.DayOfWeek==(int)dayStart.DayOfWeek)) {
@@ -132,52 +115,41 @@ public partial class BookingService
             var original=TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(appointment.StartTime,DateTimeKind.Utc),ClinicTimeZone);
             if(DateOnly.FromDateTime(original)==date&&original>=first&&original<=last)localTimes.Add(original);
         }
-        foreach(var local in localTimes.Where(_=>eligibilityErrors.Count==0)) {
+        foreach(var local in localTimes) {
             cancellationToken.ThrowIfCancellationRequested();
             // Never invent a DST-gap time or choose an ambiguous offset silently.
             if(ClinicTimeZone.IsInvalidTime(local)||ClinicTimeZone.IsAmbiguousTime(local))continue;
             var start=new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local,ClinicTimeZone));
             if(weeklyLimit?.Conflict(start.UtcDateTime)!=null)continue;
             if(WorkingTimeConflicts(start,hours,absences,duration).Count>0)continue;
-            foreach(var room in rooms)if(ClinicalCapacity.Conflicts(start.UtcDateTime,start.UtcDateTime+duration,appointment.PatientId,clinician,room.Id,candidates,doctorTreatment,room.Capacity).Count==0)slots.Add(new(start.UtcDateTime,start.UtcDateTime+duration,room.Id,room.Name,room.Capacity-ClinicalCapacity.Peak(start.UtcDateTime,start.UtcDateTime+duration,candidates.Where(a=>a.RoomId==room.Id))));
+            foreach(var room in rooms)if(ClinicalCapacity.Conflicts(start.UtcDateTime,start.UtcDateTime+duration,appointment.PatientId,clinician,room.Id,candidates,doctorTreatment,room.Capacity).Count==0)slots.Add(new(start.UtcDateTime,start.UtcDateTime+duration,room.Id,room.Name,room.Capacity));
         }
-        return new(id,ScheduleVersion(appointment),appointment.StartTime,appointment.EndTime,appointment.RoomId,clinician,clinicianName,date,slots,notices) {
-            Clinicians=clinicians,CurrentClinicianId=currentClinician,CurrentClinicianName=currentName,CurrentRoomName=appointment.Room?.Name??"",PatientName=patient.ApplicationUser.FullName
-        };
+        return new(id,ScheduleVersion(appointment),appointment.StartTime,appointment.EndTime,appointment.RoomId,clinician,clinicianName,date,slots,notices);
     }
     public async Task<RescheduleSessionReceipt> RescheduleSessionAsync(int id,RescheduleSessionRequest request,string actor)
     {
         if(string.IsNullOrWhiteSpace(actor))throw Rule("ActorRequired","An authenticated actor is required.",403);
         if(string.IsNullOrWhiteSpace(request.OperationKey)||request.OperationKey.Length>100||string.IsNullOrWhiteSpace(request.ExpectedVersion)||request.Reason?.Length>500)throw Rule("RescheduleRequest","A stable operation key, version and reason of at most 500 characters are required.");
-        // Preserve retry fingerprints for requests created before optional clinician selection existed.
-        var fingerprint=request.ClinicianId==null
-            ? Hash(new{id,request.ExpectedVersion,Start=request.StartTime.UtcDateTime,request.RoomId,Reason=request.Reason?.Trim(),Actor=actor})
-            : Hash(new{id,request.ExpectedVersion,Start=request.StartTime.UtcDateTime,request.RoomId,request.ClinicianId,Reason=request.Reason?.Trim(),Actor=actor});
+        var fingerprint=Hash(new{id,request.ExpectedVersion,Start=request.StartTime.UtcDateTime,request.RoomId,Reason=request.Reason?.Trim(),Actor=actor});
         await using var transaction=await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
         await ClinicMutationLock.AcquireAsync(db);
         var replay=await db.AppointmentScheduleChanges.AsNoTracking().SingleOrDefaultAsync(c=>c.OperationKey==request.OperationKey);
         if(replay!=null){if(replay.AppointmentId!=id||replay.RequestHash!=fingerprint)throw Rule("RetryKeyConflict","This operation key belongs to another reschedule request.",409);return Receipt(replay);}
-        if(string.IsNullOrWhiteSpace(request.Reason))throw Rule("RescheduleRequest","Enter a reason of at most 500 characters before saving.");
         var appointment=await db.Appointments.Include(a=>a.TreatmentPlanSession).Include(a=>a.Room).SingleOrDefaultAsync(a=>a.Id==id)??throw Rule("AppointmentNotFound","Appointment was not found.",404);
         RequireUpcoming(appointment);
         if(ScheduleVersion(appointment)!=request.ExpectedVersion)throw Rule("StaleSchedule","This appointment changed. Review its latest schedule and select an available slot again.",409);
-        if(appointment.StartTime==request.StartTime.UtcDateTime&&appointment.RoomId==request.RoomId&&(string.IsNullOrWhiteSpace(request.ClinicianId)||request.ClinicianId==(appointment.DoctorId??appointment.SeniorId)))throw Rule("NoScheduleChange","Choose a different time or room before saving.");
-        var previousClinician=appointment.DoctorId??appointment.SeniorId??"";
-        var clinician=string.IsNullOrWhiteSpace(request.ClinicianId)?previousClinician:request.ClinicianId;
-        var retainedRecovery=clinician==previousClinician&&await HasRecoveryAssignmentAsync(appointment);
+        if(appointment.StartTime==request.StartTime.UtcDateTime&&appointment.RoomId==request.RoomId)throw Rule("NoScheduleChange","Choose a different time or room before saving.");
+        var clinician=appointment.DoctorId??appointment.SeniorId??"";
         var originallyInsured=appointment.InsuranceFunded||await db.Invoices.AnyAsync(i=>i.AppointmentId==id&&i.InsuranceAmount>0);
-        if(retainedRecovery)await ValidateRetainedRecoveryAsync(appointment,request.StartTime.UtcDateTime,request.RoomId);
-        else{var preview=await PreviewCoreAsync(new(){PatientId=appointment.PatientId,ClinicianId=clinician,RoomId=request.RoomId,StartsAt=[request.StartTime],TreatmentPlanId=appointment.TreatmentPlanSession?.TreatmentPlanId},id,false,originallyInsured,appointment.EndTime-appointment.StartTime);
+        if(await HasRecoveryAssignmentAsync(appointment))await ValidateRetainedRecoveryAsync(appointment,request.StartTime.UtcDateTime,request.RoomId);
+        else{var preview=await PreviewCoreAsync(new(){PatientId=appointment.PatientId,ClinicianId=clinician,RoomId=request.RoomId,StartsAt=[request.StartTime],TreatmentPlanId=appointment.TreatmentPlanSession?.TreatmentPlanId},id,false,originallyInsured);
         if(!preview.CanSave)throw Rule("SlotUnavailable",string.Join(", ",preview.Errors.Concat(preview.Appointments.SelectMany(s=>s.Conflicts))),409);
         var fullInterval=await RecoveryConflicts(appointment,clinician,appointment.AppointmentType=="Session"?"Doctor":"Senior",request.StartTime.UtcDateTime,request.RoomId);
         if(fullInterval.Count>0)throw Rule("SlotUnavailable",string.Join(", ",fullInterval),409);}
-        if((await ContextAsync(appointment.PatientId)).HasCompletedAssessment!=(appointment.AppointmentType=="Session"))throw Rule("AssessmentOnly","This appointment no longer matches the patient's clinical stage.",409);
         var newRoom=await db.Rooms.SingleAsync(r=>r.Id==request.RoomId);var now=DateTime.UtcNow;
         var change=new AppointmentScheduleChange{AppointmentId=id,PatientId=appointment.PatientId,TreatmentPlanId=appointment.TreatmentPlanSession?.TreatmentPlanId,OperationKey=request.OperationKey,RequestHash=fingerprint,ActorId=actor,
             ActorName=await db.Users.Where(u=>u.Id==actor).Select(u=>u.FullName).SingleOrDefaultAsync()??"Staff",ChangedAt=now,PreviousStart=appointment.StartTime,PreviousEnd=appointment.EndTime,
-            PreviousRoomId=appointment.RoomId,PreviousRoomName=appointment.Room?.Name??"",NewStart=request.StartTime.UtcDateTime,NewEnd=request.StartTime.UtcDateTime+(appointment.EndTime-appointment.StartTime),NewRoomId=request.RoomId,NewRoomName=newRoom.Name,ClinicianId=clinician,ClinicianName=await db.Users.Where(u=>u.Id==clinician).Select(u=>u.FullName).SingleAsync(),
-            PreviousClinicianId=previousClinician,PreviousClinicianName=await db.Users.Where(u=>u.Id==previousClinician).Select(u=>u.FullName).SingleOrDefaultAsync(),Reason=request.Reason!.Trim()};
-        if(clinician!=previousClinician){appointment.DoctorId=appointment.AppointmentType=="Session"?clinician:null;appointment.SeniorId=appointment.AppointmentType=="Assessment"?clinician:null;}
+            PreviousRoomId=appointment.RoomId,PreviousRoomName=appointment.Room?.Name??"",NewStart=request.StartTime.UtcDateTime,NewEnd=request.StartTime.UtcDateTime+(appointment.EndTime-appointment.StartTime),NewRoomId=request.RoomId,NewRoomName=newRoom.Name,ClinicianId=clinician,Reason=request.Reason?.Trim()};
         appointment.StartTime=change.NewStart;appointment.EndTime=change.NewEnd;appointment.RoomId=change.NewRoomId;appointment.UpdatedBy=actor;
         if(appointment.TreatmentPlanSession!=null){appointment.TreatmentPlanSession.SessionDate=change.NewStart;appointment.TreatmentPlanSession.UpdatedBy=actor;}
         db.AppointmentScheduleChanges.Add(change);await db.SaveChangesAsync();await transaction.CommitAsync();return Receipt(change);

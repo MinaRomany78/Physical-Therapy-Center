@@ -7,9 +7,6 @@ namespace PTCenter.Application.Contracts.Appointments
 {
     public class UpdateAppointmentRequest
     {
-        public string OperationKey { get; set; } = "";
-        public string ExpectedVersion { get; set; } = "";
-        public string? Reason { get; set; }
         public string? DoctorId { get; set; }
         public string? SeniorId { get; set; }
         public int? RoomId { get; set; }

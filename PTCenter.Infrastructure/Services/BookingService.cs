@@ -108,7 +108,7 @@ public partial class BookingService(ApplicationDbContext db, TimeProvider? clock
 
     public Task<BookingPreview> PreviewAsync(BookingRequest request) => PreviewCoreAsync(request);
 
-    private async Task<BookingPreview> PreviewCoreAsync(BookingRequest request, int? excludeAppointment = null, bool checkFinancial = true, bool? fundingOverride = null, TimeSpan? duration = null)
+    private async Task<BookingPreview> PreviewCoreAsync(BookingRequest request, int? excludeAppointment = null, bool checkFinancial = true, bool? fundingOverride = null)
     {
         var context = await ContextAsync(request.PatientId);
         var patient = await PatientAsync(request.PatientId);
@@ -140,20 +140,20 @@ public partial class BookingService(ApplicationDbContext db, TimeProvider? clock
         if(treatment && plan?.FrequencyPerWeek == null) errors.Add("FrequencyRequired");
         foreach (var start in request.StartsAt)
         {
-            var end = start.Add(duration ?? TimeSpan.FromHours(1));
+            var end = start.AddMinutes(60);
             var local = TimeZoneInfo.ConvertTime(start, ClinicTimeZone);
             var localEnd = TimeZoneInfo.ConvertTime(end, ClinicTimeZone);
             var conflicts = new List<string>();
             if(plan?.FrequencyPerWeek is int frequency && weekly.GetValueOrDefault(ClinicCalendar.Week(start)) + request.StartsAt.Count(s=>ClinicCalendar.Week(s)==ClinicCalendar.Week(start)) > frequency)
                 conflicts.Add("WeeklyFrequencyLimit");
-            conflicts.AddRange(WorkingTimeConflicts(start, schedules, absences, duration));
-            if (request.StartsAt.Count(s => s < end && s.Add(duration ?? TimeSpan.FromHours(1)) > start) > 1) conflicts.Add("DuplicateSlot");
+            conflicts.AddRange(WorkingTimeConflicts(start, schedules, absences));
+            if (request.StartsAt.Count(s => s < end && s.AddMinutes(60) > start) > 1) conflicts.Add("DuplicateSlot");
             var utc = start.UtcDateTime; var utcEnd = end.UtcDateTime;
             var overlaps = await db.Appointments.AsNoTracking().Where(a => a.Id != excludeAppointment &&
                 a.Status != AppointmentStatus.Cancelled && a.Status != AppointmentStatus.NoShow && a.Status != AppointmentStatus.Completed &&
                 (a.StartTime < utcEnd && a.EndTime > utc || a.Status == AppointmentStatus.InProgress && a.ActualCheckOut == null) &&
                 (a.PatientId == request.PatientId || a.RoomId == request.RoomId || a.DoctorId == request.ClinicianId || a.SeniorId == request.ClinicianId)).ToListAsync();
-            conflicts.AddRange(ClinicalCapacity.Conflicts(utc, utcEnd, request.PatientId, request.ClinicianId, request.RoomId, overlaps, treatment, roomCapacity));
+            conflicts.AddRange(IntervalConflicts(start, request.PatientId, request.ClinicianId, request.RoomId, overlaps, treatment, roomCapacity));
             slots.Add(new(start.ToUniversalTime(), end.ToUniversalTime(), conflicts));
         }
         if (treatment && plan != null && checkFinancial)

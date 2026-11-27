@@ -8,12 +8,10 @@ using PTCenter.Domain.Entities;
 using PTCenter.Domain.Entities.Enums;
 using PTCenter.Domain.Errors;
 using PTCenter.Infrastructure.Persistence;
-using Microsoft.AspNetCore.Http;
-using System.Security.Claims;
 
 namespace PTCenter.Infrastructure.Services;
 
-public class AppointmentService(ApplicationDbContext context, BookingService bookings, IHttpContextAccessor? requestContext = null)
+public class AppointmentService(ApplicationDbContext context, BookingService bookings)
     : IAppointmentService
 {
     private readonly ApplicationDbContext _context = context;
@@ -148,19 +146,15 @@ public class AppointmentService(ApplicationDbContext context, BookingService boo
             if (current == null) return Result.Failure<AppointmentResponse>(AppointmentErrors.AppointmentNotFound);
             if (current.Status != request.Status)
                 return Result.Failure<AppointmentResponse>(new("Booking.SeparateStatusAction", "Use the explicit check-in/check-out action to change status.", 400));
-            if(string.IsNullOrWhiteSpace(request.OperationKey)||string.IsNullOrWhiteSpace(request.ExpectedVersion)||string.IsNullOrWhiteSpace(request.Reason))
-                return Result.Failure<AppointmentResponse>(new("Booking.RescheduleWorkflowRequired", "Use the reschedule action with current availability, version, operation key and required reason.", 409));
-            await bookings.RescheduleSessionAsync(id,new() {
-                OperationKey=request.OperationKey,ExpectedVersion=request.ExpectedVersion,Reason=request.Reason,
-                StartTime=new DateTimeOffset(DateTime.SpecifyKind(request.StartTime,DateTimeKind.Utc)),
-                ClinicianId=request.DoctorId??request.SeniorId,RoomId=request.RoomId??0
-            },requestContext?.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier)??"");
+            await bookings.RescheduleAsync(id, new RescheduleBookingRequest {
+                StartTime = new DateTimeOffset(DateTime.SpecifyKind(request.StartTime, DateTimeKind.Utc)),
+                ClinicianId = request.DoctorId ?? request.SeniorId ?? "", RoomId = request.RoomId ?? 0
+            });
             return await GetByIdAsync(id);
         }
         catch (BookingRuleException e) { return Result.Failure<AppointmentResponse>(new(e.Code, e.Message, e.Status)); }
         catch (Microsoft.Data.SqlClient.SqlException e) when(e.Number is 1205 or 1222 or 51001) { return Result.Failure<AppointmentResponse>(new("Booking.ConcurrentChange","Refresh clinic availability before retrying the original action.",409)); }
         catch (DbUpdateConcurrencyException) { return Result.Failure<AppointmentResponse>(new("Booking.ConcurrentChange","The appointment changed. Refresh before saving.",409)); }
-        catch (DbUpdateException) { return Result.Failure<AppointmentResponse>(new("Booking.ConcurrentChange","Booking data changed. Reconcile the same operation key before retrying.",409)); }
     }
 
     public Task<Result> DeleteAsync(int id) => UpdateStatusAsync(id, nameof(AppointmentStatus.Cancelled));
