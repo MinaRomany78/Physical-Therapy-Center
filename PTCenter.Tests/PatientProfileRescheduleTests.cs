@@ -101,7 +101,7 @@ public sealed partial class BookingDatabaseTests
         }
         await db.SaveChangesAsync();
         Assert.DoesNotContain((await service.RescheduleAvailabilityAsync(id,CairoDate(desired.UtcDateTime))).Slots,s=>s.StartTime==slot.StartTime&&s.RoomId==1);
-        var error=await Assert.ThrowsAsync<BookingRuleException>(()=>service.RescheduleSessionAsync(id,new(){OperationKey=Guid.NewGuid().ToString(),ExpectedVersion=available.Version,StartTime=desired,RoomId=1},"doctor"));
+        var error=await Assert.ThrowsAsync<BookingRuleException>(()=>service.RescheduleSessionAsync(id,new(){OperationKey=Guid.NewGuid().ToString(),ExpectedVersion=available.Version,StartTime=desired,RoomId=1,Reason="Conflict validation"},"doctor"));
         Assert.Equal("Booking.SlotUnavailable",error.Code);Assert.Equal(Upcoming.UtcDateTime,(await db.Appointments.FindAsync(id))!.StartTime);Assert.Empty(await db.AppointmentScheduleChanges.ToListAsync());
     }
     [Theory][InlineData(AppointmentStatus.Completed)][InlineData(AppointmentStatus.InProgress)][InlineData(AppointmentStatus.Cancelled)][InlineData(AppointmentStatus.NoShow)]
@@ -110,13 +110,13 @@ public sealed partial class BookingDatabaseTests
         var (receipt,_)=await ProfileBooking();var appointment=await db.Appointments.FindAsync(receipt.Appointments[0].Id);appointment!.Status=status;await db.SaveChangesAsync();
         await Assert.ThrowsAsync<BookingRuleException>(()=>service.RescheduleAvailabilityAsync(appointment.Id,CairoDate(Upcoming.UtcDateTime)));
         await Assert.ThrowsAsync<BookingRuleException>(()=>service.RescheduleAsync(appointment.Id,new(){StartTime=Upcoming.AddHours(2),ClinicianId="doctor",RoomId=1}));
-        await Assert.ThrowsAsync<BookingRuleException>(()=>service.RescheduleSessionAsync(appointment.Id,new(){OperationKey=Guid.NewGuid().ToString(),ExpectedVersion="old",StartTime=Upcoming.AddHours(2),RoomId=1},"doctor"));
+        await Assert.ThrowsAsync<BookingRuleException>(()=>service.RescheduleSessionAsync(appointment.Id,new(){OperationKey=Guid.NewGuid().ToString(),ExpectedVersion="old",StartTime=Upcoming.AddHours(2),RoomId=1,Reason="Eligibility validation"},"doctor"));
         Assert.Equal(status,appointment.Status);
     }
     [Fact] public async Task Stale_expected_version_rejects_second_receptionist_change_and_changed_retry_intent()
     {
         var (receipt,_)=await ProfileBooking();var id=receipt.Appointments[0].Id;var (available,slot)=await SlotFor(id,Upcoming.AddHours(2));
-        var request=new RescheduleSessionRequest{OperationKey=Guid.NewGuid().ToString(),ExpectedVersion=available.Version,StartTime=slot.StartTime,RoomId=slot.RoomId};
+        var request=new RescheduleSessionRequest{OperationKey=Guid.NewGuid().ToString(),ExpectedVersion=available.Version,StartTime=slot.StartTime,RoomId=slot.RoomId,Reason="Concurrent edit validation"};
         await service.RescheduleSessionAsync(id,request,"doctor");
         request.OperationKey=Guid.NewGuid().ToString();var stale=await Assert.ThrowsAsync<BookingRuleException>(()=>service.RescheduleSessionAsync(id,request,"doctor"));Assert.Equal("Booking.StaleSchedule",stale.Code);
         var audit=await db.AppointmentScheduleChanges.SingleAsync();request.OperationKey=audit.OperationKey;request.StartTime=request.StartTime.AddHours(1);

@@ -28,7 +28,7 @@ public class BookingsController(BookingService service, PTCenter.Infrastructure.
     [HttpGet("patients/{id:int}/profile")]
     public Task<IActionResult> Profile(int id) => Execute(() => service.ProfileAsync(id));
     [HttpGet("appointments/{id:int}/reschedule-slots")]
-    public Task<IActionResult> RescheduleSlots(int id,[FromQuery] DateOnly date,CancellationToken cancellationToken) => Execute(() => service.RescheduleAvailabilityAsync(id,date,cancellationToken));
+    public Task<IActionResult> RescheduleSlots(int id,[FromQuery] DateOnly date,CancellationToken cancellationToken,[FromQuery] string? clinicianId=null) => Execute(() => service.RescheduleAvailabilityAsync(id,date,cancellationToken,clinicianId));
     [HttpPut("appointments/{id:int}/reschedule")]
     [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.Operations)]
     public Task<IActionResult> RescheduleSession(int id,RescheduleSessionRequest request) => Execute(() => service.RescheduleSessionAsync(id,request,User.FindFirstValue(ClaimTypes.NameIdentifier)??""));
@@ -57,7 +57,7 @@ public class BookingsController(BookingService service, PTCenter.Infrastructure.
     public Task<IActionResult> ReconcileCollection(string key, string operationKey) => Execute(() => service.ReconcileCollectionAsync(key, operationKey));
     [HttpPut("appointments/{id:int}/schedule")]
     [Authorize(Roles = PTCenter.Api.Authorization.ReceptionPermissions.Operations)]
-    public Task<IActionResult> Reschedule(int id, RescheduleBookingRequest request) => Execute(async () => { await service.RescheduleAsync(id, request); return new { id }; });
+    public Task<IActionResult> Reschedule(int id, RescheduleSessionRequest request) => Execute(() => service.RescheduleSessionAsync(id,request,User.FindFirstValue(ClaimTypes.NameIdentifier)??""));
     [HttpPut("appointments/{id:int}/status")]
     public async Task<IActionResult> Status(int id, [FromBody] AppointmentStatus status) { if (!await PTCenter.Api.Authorization.AttendanceAuthorization.AllowedAsync(db, User, id)) return Forbid(); return await Execute(async () => { await service.TransitionAsync(id, status); return new { id }; }); }
     [HttpPost("assessments/complete")]

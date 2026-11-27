@@ -31,9 +31,16 @@ public record PatientProfileData(int PatientId,List<ProfileCourse> Courses,List<
 }
 public record RescheduleSlot(DateTime StartTime,DateTime EndTime,int RoomId,string RoomName,int RemainingCapacity);
 public record RescheduleAvailability(int AppointmentId,string Version,DateTime CurrentStart,DateTime CurrentEnd,int? CurrentRoomId,
-    string ClinicianId,string ClinicianName,DateOnly Date,List<RescheduleSlot> Slots,List<string> Notices);
+    string ClinicianId,string ClinicianName,DateOnly Date,List<RescheduleSlot> Slots,List<string> Notices) {
+    public List<BookingClinician> Clinicians { get; init; } = [];
+    public string CurrentClinicianId { get; init; } = "";
+    public string CurrentClinicianName { get; init; } = "";
+    public string CurrentRoomName { get; init; } = "";
+    public string PatientName { get; init; } = "";
+};
 public class RescheduleSessionRequest
 {
+    public string? ClinicianId { get; set; }
     public string OperationKey { get; set; } = "";
     public string ExpectedVersion { get; set; } = "";
     public DateTimeOffset StartTime { get; set; }
